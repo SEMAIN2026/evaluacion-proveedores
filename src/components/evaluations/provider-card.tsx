@@ -143,53 +143,54 @@ export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEma
           </div>
         )}
 
-        {/* Actions */}
-        <div className="px-3 py-3 bg-slate-50/50 border-t border-slate-100 flex flex-wrap gap-2">
+        {/* Actions - 4 main buttons, equally weighted, very clear */}
+        <div className="px-3 py-3 bg-slate-50/50 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-2">
           <Button
             asChild
             size="sm"
-            variant="default"
-            className="bg-slate-900 hover:bg-slate-800"
+            className="bg-slate-900 hover:bg-slate-800 justify-center"
           >
             <a
               href={`/api/evaluations/${ev.id}/pdf`}
               target="_blank"
               rel="noopener noreferrer"
             >
-              <FileText className="w-3.5 h-3.5 mr-1.5" />
+              <FileText className="w-4 h-4 mr-1.5" />
               Ver PDF
             </a>
           </Button>
           <Button
             size="sm"
-            variant="default"
             onClick={() => onSendEmail(ev)}
             disabled={!hasEmail}
             className={cn(
+              'justify-center',
               hasEmail
                 ? 'bg-emerald-600 hover:bg-emerald-700'
-                : 'bg-slate-300 cursor-not-allowed'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             )}
             title={hasEmail ? 'Enviar correo con evaluación y gráfica' : 'Sin correo electrónico'}
           >
-            <Mail className="w-3.5 h-3.5 mr-1.5" />
-            Enviar correo
+            <Mail className="w-4 h-4 mr-1.5" />
+            Correo
           </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={() => onEdit(ev)}
+            className="justify-center border-sky-300 text-sky-700 hover:bg-sky-50"
           >
-            <Pencil className="w-3.5 h-3.5 mr-1.5" />
+            <Pencil className="w-4 h-4 mr-1.5" />
             Editar
           </Button>
           <Button
             size="sm"
             variant="outline"
             onClick={() => onDelete(ev)}
-            className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+            className="justify-center text-rose-600 border-rose-300 hover:bg-rose-50"
           >
-            <Trash2 className="w-3.5 h-3.5" />
+            <Trash2 className="w-4 h-4 mr-1.5" />
+            Borrar
           </Button>
         </div>
       </CardContent>

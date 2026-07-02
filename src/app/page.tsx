@@ -1,7 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useMemo, useState, useEffect, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -27,20 +26,27 @@ import { ProviderCard } from '@/components/evaluations/provider-card'
 import { EmailModal } from '@/components/evaluations/email-modal'
 import { StatsDashboard } from '@/components/evaluations/stats-dashboard'
 import { ComparisonChart } from '@/components/evaluations/comparison-chart'
-import type { Evaluation } from '@/lib/db'
+import type { Evaluation } from '@/lib/evaluations'
 import {
   ClipboardList,
-  LayoutGrid,
-  BarChart3,
   Search,
   Download,
   Mail,
   Plus,
+  Pencil,
+  BarChart3,
+  LayoutGrid,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+type View = 'list' | 'new' | 'dashboard'
 
 export default function Home() {
   const { data, loading, save, remove } = useEvaluations()
   const { stats } = useStats()
+  const [view, setView] = useState<View>('list')
   const [editing, setEditing] = useState<Evaluation | null>(null)
   const [emailTarget, setEmailTarget] = useState<Evaluation | null>(null)
   const [emailOpen, setEmailOpen] = useState(false)
@@ -48,6 +54,8 @@ export default function Home() {
   const [search, setSearch] = useState('')
   const [classFilter, setClassFilter] = useState<string>('ALL')
   const [sort, setSort] = useState<'recent' | 'best' | 'worst' | 'name'>('recent')
+  const [showDashboard, setShowDashboard] = useState(false)
+  const formRef = useRef<HTMLDivElement>(null)
 
   // Ranked data
   const ranked = useMemo(() => {
@@ -97,9 +105,17 @@ export default function Home() {
     ? data.reduce((s, e) => s + e.calificacion, 0) / data.length
     : 0
 
+  // ---- Actions ----
+  const handleNew = () => {
+    setEditing(null)
+    setView('new')
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
   const handleEdit = (ev: Evaluation) => {
     setEditing(ev)
-    document.getElementById('evaluacion-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setView('new')
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
   }
 
   const handleSendEmail = (ev: Evaluation) => {
@@ -118,6 +134,25 @@ export default function Home() {
     }
   }
 
+  const handleFormSave = async (payload: Partial<Evaluation> & { proveedor: string }) => {
+    const saved = await save(payload)
+    setEditing(null)
+    setView('list')
+    return saved
+  }
+
+  const handleFormClear = () => {
+    setEditing(null)
+    setView('list')
+  }
+
+  // Auto-switch back to list after editing a non-existent record
+  useEffect(() => {
+    if (editing && !data.find((e) => e.id === editing.id)) {
+      // editing record no longer exists, ignore
+    }
+  }, [data, editing])
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Top bar */}
@@ -131,46 +166,63 @@ export default function Home() {
               <h1 className="text-base font-bold text-slate-900">
                 Evaluación de Proveedores
               </h1>
-              <p className="text-[11px] text-slate-500">F-CAL-07 REV01 · Sistema de gestión</p>
+              <p className="text-[11px] text-slate-500">F-CAL-07 REV01 · {data.length} proveedor{data.length === 1 ? '' : 'es'}</p>
             </div>
           </div>
-          <div className="flex-1 hidden md:flex items-center justify-end gap-2">
+
+          <div className="flex-1 flex items-center justify-end gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowDashboard((v) => !v)}
+              className={cn(showDashboard && 'bg-slate-100')}
+            >
+              {showDashboard ? <EyeOff className="w-4 h-4 mr-1.5" /> : <BarChart3 className="w-4 h-4 mr-1.5" />}
+              {showDashboard ? 'Ocultar panel' : 'Ver panel'}
+            </Button>
             <Button asChild size="sm" variant="outline">
               <a href="/api/export?format=csv" download>
                 <Download className="w-4 h-4 mr-1.5" />
-                Exportar CSV
+                Excel
               </a>
             </Button>
-            <Button asChild size="sm" variant="outline">
-              <a href="/api/export?format=json" target="_blank" rel="noopener noreferrer">
-                <Download className="w-4 h-4 mr-1.5" />
-                Ver JSON
-              </a>
+            <Button
+              size="sm"
+              onClick={handleNew}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <Plus className="w-4 h-4 mr-1.5" />
+              Nueva evaluación
             </Button>
           </div>
         </div>
       </header>
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6 space-y-6">
-        <Tabs defaultValue="registro" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 max-w-md">
-            <TabsTrigger value="registro">
-              <LayoutGrid className="w-4 h-4 mr-1.5" />
-              Registro
-            </TabsTrigger>
-            <TabsTrigger value="nueva">
-              <Plus className="w-4 h-4 mr-1.5" />
-              Nueva evaluación
-            </TabsTrigger>
-            <TabsTrigger value="dashboard">
-              <BarChart3 className="w-4 h-4 mr-1.5" />
-              Dashboard
-            </TabsTrigger>
-          </TabsList>
+        {/* Optional dashboard */}
+        {showDashboard && (
+          <div className="space-y-4">
+            <StatsDashboard stats={stats} />
+            <ComparisonChart evaluations={data} />
+            <div className="border-t border-slate-200 pt-2" />
+          </div>
+        )}
 
-          {/* REGISTRO */}
-          <TabsContent value="registro" className="space-y-4 mt-4">
-            {/* Filters */}
+        {/* Form (shown when view === 'new') */}
+        {view === 'new' && (
+          <div ref={formRef} className="scroll-mt-20">
+            <EvaluationForm
+              initial={editing}
+              onSave={handleFormSave}
+              onClear={handleFormClear}
+            />
+          </div>
+        )}
+
+        {/* Always-visible list */}
+        {view === 'list' && (
+          <>
+            {/* Search & filters */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-white border border-slate-200 rounded-lg p-3">
               <div className="md:col-span-5 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -230,10 +282,7 @@ export default function Home() {
                     : 'Prueba con otros filtros de búsqueda.'}
                 </p>
                 {data.length === 0 && (
-                  <Button onClick={() => {
-                    const tab = document.querySelector('[value="nueva"]') as HTMLButtonElement
-                    tab?.click()
-                  }}>
+                  <Button onClick={handleNew}>
                     <Plus className="w-4 h-4 mr-2" />
                     Nueva evaluación
                   </Button>
@@ -255,32 +304,20 @@ export default function Home() {
                 ))}
               </div>
             )}
-          </TabsContent>
-
-          {/* NUEVA EVALUACIÓN */}
-          <TabsContent value="nueva" className="space-y-4 mt-4" id="evaluacion-form">
-            <EvaluationForm
-              initial={editing}
-              onSave={save}
-              onClear={() => setEditing(null)}
-            />
-          </TabsContent>
-
-          {/* DASHBOARD */}
-          <TabsContent value="dashboard" className="space-y-4 mt-4">
-            <StatsDashboard stats={stats} />
-            <ComparisonChart evaluations={data} />
-          </TabsContent>
-        </Tabs>
+          </>
+        )}
       </main>
 
       <footer className="bg-white border-t border-slate-200 mt-auto">
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+          <span>F-CAL-07 REV01 · Sistema de Evaluación de Proveedores</span>
           <span>
-            F-CAL-07 REV01 · {data.length} proveedor{data.length === 1 ? '' : 'es'} en registro
-          </span>
-          <span>
-            Diseñado para agilizar la evaluación y comunicación con proveedores
+            <LayoutGrid className="w-3 h-3 inline mr-1" />
+            {data.length} proveedor{data.length === 1 ? '' : 'es'} ·{' '}
+            <Pencil className="w-3 h-3 inline mx-1" />
+            Edita con el botón lápiz ·{' '}
+            <Mail className="w-3 h-3 inline mx-1" />
+            Envía correo proveedor por proveedor
           </span>
         </div>
       </footer>

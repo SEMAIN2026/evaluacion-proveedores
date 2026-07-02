@@ -278,14 +278,24 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
           </div>
         )}
 
-        <div className="flex flex-wrap gap-3 justify-end pt-2 border-t">
-          <Button variant="outline" onClick={handleReset} type="button">
+        <div className="flex flex-wrap gap-3 justify-between pt-3 border-t">
+          <Button variant="ghost" onClick={handleReset} type="button" className="text-slate-600">
             <RotateCcw className="w-4 h-4 mr-2" />
-            Limpiar
+            {initial ? 'Cancelar edición' : 'Limpiar formulario'}
           </Button>
-          <Button onClick={handleSubmit} disabled={saving} type="button">
+          <Button
+            onClick={handleSubmit}
+            disabled={saving}
+            type="button"
+            size="lg"
+            className="bg-emerald-600 hover:bg-emerald-700"
+          >
             <Save className="w-4 h-4 mr-2" />
-            {saving ? 'Guardando…' : initial ? 'Actualizar evaluación' : 'Guardar evaluación'}
+            {saving
+              ? 'Guardando…'
+              : initial
+                ? 'Guardar cambios'
+                : 'Guardar evaluación'}
           </Button>
         </div>
       </CardContent>
