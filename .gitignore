@@ -54,3 +54,4 @@ upload/
 
 # Vercel
 .vercel
+.env*
