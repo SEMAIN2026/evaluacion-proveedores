@@ -12,7 +12,7 @@ import {
   Cell,
   ReferenceLine,
 } from 'recharts'
-import type { Evaluation } from '@/lib/db'
+import type { Evaluation } from '@/lib/evaluations'
 
 interface Props {
   evaluations: Evaluation[]

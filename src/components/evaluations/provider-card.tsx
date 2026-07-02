@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { CRITERIA, classificationColor, type Evaluation } from '@/lib/db'
+import { CRITERIA, classificationColor, type Evaluation } from '@/lib/evaluations'
 import {
   FileText,
   Mail,

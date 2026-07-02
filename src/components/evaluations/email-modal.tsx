@@ -17,7 +17,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Loader2, Mail, ExternalLink, Copy, Download, Send, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Evaluation } from '@/lib/db'
+import type { Evaluation } from '@/lib/evaluations'
 
 interface Props {
   ev: Evaluation | null

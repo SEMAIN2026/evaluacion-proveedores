@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { Evaluation } from '@/lib/db'
+import type { Evaluation } from '@/lib/evaluations'
 
 interface Stats {
   total: number
