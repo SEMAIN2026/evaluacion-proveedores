@@ -100,80 +100,67 @@ def download_file(url, filepath):
 
 def get_outlook_app():
     """
-    Connect to Outlook using the same robust approach as pv_monitor_tray.py.
-    Works even when another tray app is already using Outlook.
+    Connect to Outlook WITHOUT trying to open a new instance.
+    Dispatch connects to the running instance (used by pv_monitor too).
+    Never call 'start outlook' — that causes 'only one version can run' error.
 
     Returns (outlook_app, error_message_or_None).
     """
     import subprocess
 
-    # Método 0: Si Outlook no está corriendo, abrirlo primero
-    try:
-        result = subprocess.run(
-            ['tasklist', '/FI', 'IMAGENAME eq outlook.exe'],
-            capture_output=True, text=True, timeout=5
-        )
-        if 'outlook.exe' not in result.stdout.lower():
-            # Outlook no está corriendo — abrirlo
-            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
-            time.sleep(8)  # esperar a que Outlook arranque
-    except Exception:
-        pass
-
-    # Método 1: Dispatch (funciona aunque otro proceso use Outlook)
+    # Método 1: Dispatch — se conecta a la instancia existente de Outlook
+    # NO abre una nueva. Funciona aunque pv_monitor ya lo esté usando.
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
         return outlook, None
     except Exception as e:
         err1 = str(e)
 
-    # Si es el error de "ejecución de servidor", matar Outlook zombie y reintentar
-    if '-2146959355' in err1 or '-2147221021' in err1:
-        try:
-            subprocess.run(
-                ['taskkill', '/F', '/IM', 'outlook.exe'],
-                capture_output=True, timeout=5
-            )
-            time.sleep(3)
-            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
-            time.sleep(10)
+    # Método 2: GetActiveObject — conectar a instancia existente (alternativa)
+    try:
+        outlook = win32com.client.GetActiveObject("Outlook.Application")
+        return outlook, None
+    except Exception as e:
+        err2 = str(e)
 
-            try:
-                outlook = win32com.client.Dispatch("Outlook.Application")
-                return outlook, None
-            except Exception as e2:
-                err1 = f"{err1} | reintento: {e2}"
-        except Exception:
-            pass
-
-    # Método 2: EnsureDispatch
+    # Método 3: EnsureDispatch
     try:
         import win32com.client.gencache
         outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
         return outlook, None
     except Exception as e:
-        err2 = str(e)
-
-    # Método 3: GetActiveObject (conectar a instancia existente)
-    try:
-        outlook = win32com.client.GetActiveObject("Outlook.Application")
-        return outlook, None
-    except Exception as e:
         err3 = str(e)
+
+    # Si Outlook no está corriendo en absoluto, intentamos abrirlo UNA sola vez
+    # (sin matar procesos — pv_monitor podría estar usándolo)
+    try:
+        result = subprocess.run(
+            ['tasklist', '/FI', 'IMAGENAME eq outlook.exe'],
+            capture_output=True, text=True, timeout=5
+        )
+        if 'outlook.exe' not in result.stdout.lower():
+            # Outlook realmente no está corriendo — abrirlo
+            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
+            time.sleep(10)
+            # Reintentar Dispatch
+            try:
+                outlook = win32com.client.Dispatch("Outlook.Application")
+                return outlook, None
+            except Exception as e:
+                err1 = f"{err1} | después de abrir: {e}"
+    except Exception:
+        pass
 
     # Todos fallaron
     return None, (
         f"No se pudo conectar a Outlook.\n\n"
         f"Posibles causas:\n"
-        f"• Outlook está atascado (proceso zombie)\n"
-        f"• Otro programa está usando Outlook (pv_monitor)\n"
-        f"• Outlook no está instalado\n\n"
+        f"• Outlook no está abierto (ábrelo manualmente)\n"
+        f"• Otro programa está bloqueando Outlook\n\n"
         f"Solución:\n"
-        f"1. Abre Outlook MANUALMENTE (doble clic en el icono)\n"
-        f"2. Si Outlook da error, abre Administrador de Tareas (Ctrl+Shift+Esc)\n"
-        f"3. Termina TODOS los procesos OUTLOOK.EXE\n"
-        f"4. Abre Outlook de nuevo manualmente\n"
-        f"5. Dejalo abierto y pulsa 'Preparar en Outlook' otra vez\n\n"
+        f"1. Abre Outlook MANUALMENTE (doble clic en el icono de Outlook)\n"
+        f"2. Espera a que cargue (veas la bandeja de entrada)\n"
+        f"3. Dejalo abierto y pulsa 'Preparar en Outlook' otra vez\n\n"
         f"Errores técnicos:\n- {err1}\n- {err2}\n- {err3}"
     )
 
