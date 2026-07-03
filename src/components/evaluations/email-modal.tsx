@@ -237,12 +237,6 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
                       2. instalar.bat
                     </a>
                   </Button>
-                  <Button asChild size="sm" variant="default">
-                    <a href="/downloads/iniciar.bat" download>
-                      <Download className="w-3.5 h-3.5 mr-1.5" />
-                      3. iniciar.bat
-                    </a>
-                  </Button>
                   <Button asChild size="sm" variant="outline">
                     <a href="/downloads/LEEME.md" target="_blank" rel="noopener noreferrer">
                       Instrucciones
@@ -250,9 +244,9 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
                   </Button>
                 </div>
                 <ol className="text-xs text-amber-800 space-y-1 list-decimal list-inside">
-                  <li>Descarga los 3 archivos y ponlos en una carpeta (ej. <code>C:\SEMAIN\</code>)</li>
-                  <li>Doble clic en <code>instalar.bat</code> (instala dependencias, una sola vez)</li>
-                  <li>Doble clic en <code>iniciar.bat</code> (arranca la app, verás el icono verde)</li>
+                  <li>Descarga los 2 archivos y ponlos en una carpeta (ej. <code>C:\SEMAIN\</code>)</li>
+                  <li>Doble clic en <code>instalar.bat</code> (instala todo + crea acceso directo en el Escritorio, una sola vez)</li>
+                  <li>Doble clic en el acceso directo "SEMAIN - Asistente" del Escritorio (verás el icono verde)</li>
                   <li>Vuelve aquí y pulsa "Reintentar"</li>
                 </ol>
                 <Button

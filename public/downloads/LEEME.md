@@ -9,23 +9,22 @@ gráfica, los guarda en la carpeta correcta, y abre Outlook con todo listo.
 1. Instala Python 3.10+ desde https://python.org
    - **IMPORTANTE**: Marca la casilla "Add Python to PATH" al instalar
 
-2. Descarga estos 5 archivos y ponlos en una carpeta (por ejemplo `C:\SEMAIN\`):
-   - `semain_tray.py`
-   - `instalar.bat`
-   - `iniciar.vbs` ← arranca silenciosamente (sin ventana)
-   - `iniciar.bat` ← alternativa que llama al VBS
+2. Descarga estos 3 archivos y ponlos en una carpeta (por ejemplo `C:\SEMAIN\`):
+   - `semain_tray.py` — el programa principal
+   - `instalar.bat` — instala dependencias y crea el acceso directo
    - `LEEME.md` (este archivo)
 
 3. Haz **doble clic en `instalar.bat`**
    - Instala las dependencias (pystray, Pillow, requests, pywin32)
-   - Crea un acceso directo en el Escritorio
+   - Encuentra `pythonw.exe` automáticamente
+   - Crea un acceso directo en el Escritorio que ejecuta Python silenciosamente
+     (sin ventana de consola)
 
 ## Uso diario
 
 1. **Inicia el programa**: Doble clic en el acceso directo "SEMAIN - Asistente"
-   del Escritorio, o doble clic en `iniciar.vbs`
+   del Escritorio
    - **NO abre ninguna ventana** — todo es en segundo plano
-   - Aparece un icono verde con "S" en la bandeja del sistema
    - Aparece un icono verde con "S" en la bandeja del sistema (junto al reloj)
 
 2. **Abre la página web**: https://my-project-mu-tan.vercel.app/
@@ -50,8 +49,7 @@ C:\Users\Equipo 39\Desktop\WALTER\ALMACEN\EVALUACION DE PROVEDORES\
 │   └── Julio\
 │       ├── Evaluacion-SERVIACERO.pdf
 │       ├── Grafica-comparativa-SERVIACERO.png
-│       ├── Evaluacion-HEMACHISA_HERRAMIENTAS.pdf
-│       └── Grafica-comparativa-HEMACHISA_HERRAMIENTAS.png
+│       └── ...
 ├── 2027\
 │   └── Enero\
 │   └── ...
@@ -76,9 +74,9 @@ Clic derecho en el icono verde con "S" en la bandeja del sistema → **Salir**
 - Abre Outlook manualmente una vez antes de usar el programa
 - Ejecuta `instalar.bat` de nuevo para reinstalar pywin32
 
-**Error de permisos al guardar archivos**
-- Verifica que tienes permisos de escritura en el Escritorio
-- Ejecuta `iniciar.bat` como administrador (clic derecho → Ejecutar como administrador)
+**Error al hacer clic en el acceso directo del Escritorio**
+- Vuelve a ejecutar `instalar.bat` — esto recrea el acceso directo
+- Verifica que `semain_tray.py` esté en `C:\SEMAIN\`
 
 **El icono no aparece en la bandeja**
 - Windows puede ocultar iconos. Pulsa la flecha "^" junto al reloj para ver todos
@@ -87,7 +85,7 @@ Clic derecho en el icono verde con "S" en la bandeja del sistema → **Salir**
 ## Detalles técnicos
 
 - El programa escucha en `http://127.0.0.1:8765`
-- La página web (HTTPS) puede comunicarse con localhost (HTTP) porque los
-  navegadores consideran localhost como un origen seguro
+- El acceso directo ejecuta `pythonw.exe` (Python sin consola) directamente
+  con `semain_tray.py` como argumento — no usa VBS ni ventanas intermedias
 - No se envían datos fuera de tu computadora
 - El correo NO se envía automáticamente — siempre se abre para que lo revises
