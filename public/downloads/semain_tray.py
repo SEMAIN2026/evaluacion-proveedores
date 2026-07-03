@@ -100,46 +100,81 @@ def download_file(url, filepath):
 
 def get_outlook_app():
     """
-    Connect to Outlook. Try in order:
-      1. GetActiveObject — connect to a running Outlook instance (preferred,
-         avoids the 'only one version can run at a time' error)
-      2. Dispatch — start a new instance
-      3. DispatchEx — start a new instance in a separate process
+    Connect to Outlook using the same robust approach as pv_monitor_tray.py.
+    Works even when another tray app is already using Outlook.
+
     Returns (outlook_app, error_message_or_None).
     """
-    # 1. Try to connect to running Outlook
+    import subprocess
+
+    # Método 0: Si Outlook no está corriendo, abrirlo primero
     try:
-        import pythoncom
-        outlook = win32com.client.GetActiveObject("Outlook.Application")
-        return outlook, None
+        result = subprocess.run(
+            ['tasklist', '/FI', 'IMAGENAME eq outlook.exe'],
+            capture_output=True, text=True, timeout=5
+        )
+        if 'outlook.exe' not in result.stdout.lower():
+            # Outlook no está corriendo — abrirlo
+            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
+            time.sleep(8)  # esperar a que Outlook arranque
     except Exception:
         pass
 
-    # 2. Try Dispatch (will reuse or start new)
+    # Método 1: Dispatch (funciona aunque otro proceso use Outlook)
     try:
         outlook = win32com.client.Dispatch("Outlook.Application")
         return outlook, None
     except Exception as e:
         err1 = str(e)
 
-    # 3. Try DispatchEx (forces new instance in separate process)
+    # Si es el error de "ejecución de servidor", matar Outlook zombie y reintentar
+    if '-2146959355' in err1 or '-2147221021' in err1:
+        try:
+            subprocess.run(
+                ['taskkill', '/F', '/IM', 'outlook.exe'],
+                capture_output=True, timeout=5
+            )
+            time.sleep(3)
+            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
+            time.sleep(10)
+
+            try:
+                outlook = win32com.client.Dispatch("Outlook.Application")
+                return outlook, None
+            except Exception as e2:
+                err1 = f"{err1} | reintento: {e2}"
+        except Exception:
+            pass
+
+    # Método 2: EnsureDispatch
     try:
-        outlook = win32com.client.DispatchEx("Outlook.Application")
+        import win32com.client.gencache
+        outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
         return outlook, None
     except Exception as e:
         err2 = str(e)
 
-    # All failed
+    # Método 3: GetActiveObject (conectar a instancia existente)
+    try:
+        outlook = win32com.client.GetActiveObject("Outlook.Application")
+        return outlook, None
+    except Exception as e:
+        err3 = str(e)
+
+    # Todos fallaron
     return None, (
-        f"No se pudo conectar a Outlook. Intenta lo siguiente:\n\n"
-        f"1. Abre Outlook MANUALMENTE (doble clic en el icono de Outlook)\n"
-        f"2. Espera a que cargue por completo (veas la bandeja de entrada)\n"
-        f"3. NO lo cierres — dejalo abierto\n"
-        f"4. Vuelve a la web y pulsa 'Preparar en Outlook' otra vez\n\n"
-        f"Si Outlook sigue dando error, abre el Administrador de Tareas "
-        f"(Ctrl+Shift+Esc), termina todos los procesos OUTLOOK.EXE, y "
-        f"vuelve a abrir Outlook manualmente.\n\n"
-        f"Errores tecnicos:\n- {err1}\n- {err2}"
+        f"No se pudo conectar a Outlook.\n\n"
+        f"Posibles causas:\n"
+        f"• Outlook está atascado (proceso zombie)\n"
+        f"• Otro programa está usando Outlook (pv_monitor)\n"
+        f"• Outlook no está instalado\n\n"
+        f"Solución:\n"
+        f"1. Abre Outlook MANUALMENTE (doble clic en el icono)\n"
+        f"2. Si Outlook da error, abre Administrador de Tareas (Ctrl+Shift+Esc)\n"
+        f"3. Termina TODOS los procesos OUTLOOK.EXE\n"
+        f"4. Abre Outlook de nuevo manualmente\n"
+        f"5. Dejalo abierto y pulsa 'Preparar en Outlook' otra vez\n\n"
+        f"Errores técnicos:\n- {err1}\n- {err2}\n- {err3}"
     )
 
 
