@@ -100,68 +100,43 @@ def download_file(url, filepath):
 
 def get_outlook_app():
     """
-    Connect to Outlook WITHOUT trying to open a new instance.
-    Dispatch connects to the running instance (used by pv_monitor too).
-    Never call 'start outlook' — that causes 'only one version can run' error.
+    Connect to the ALREADY RUNNING Outlook instance. Never open a new one.
+    pv_monitor_tray.py keeps Outlook open, so we just attach to it.
 
     Returns (outlook_app, error_message_or_None).
     """
-    import subprocess
-
-    # Método 1: Dispatch — se conecta a la instancia existente de Outlook
-    # NO abre una nueva. Funciona aunque pv_monitor ya lo esté usando.
-    try:
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        return outlook, None
-    except Exception as e:
-        err1 = str(e)
-
-    # Método 2: GetActiveObject — conectar a instancia existente (alternativa)
+    # Método 1: GetActiveObject — conectar a instancia EXISTENTE
+    # Este es el método más seguro cuando otro programa ya tiene Outlook abierto.
     try:
         outlook = win32com.client.GetActiveObject("Outlook.Application")
         return outlook, None
     except Exception as e:
-        err2 = str(e)
+        err1 = str(e)
 
-    # Método 3: EnsureDispatch
+    # Método 2: Dispatch — también se conecta a la instancia existente
+    # (NO abre una nueva si una ya está corriendo)
     try:
-        import win32com.client.gencache
-        outlook = win32com.client.gencache.EnsureDispatch("Outlook.Application")
+        outlook = win32com.client.Dispatch("Outlook.Application")
         return outlook, None
     except Exception as e:
-        err3 = str(e)
+        err2 = str(e)
 
-    # Si Outlook no está corriendo en absoluto, intentamos abrirlo UNA sola vez
-    # (sin matar procesos — pv_monitor podría estar usándolo)
-    try:
-        result = subprocess.run(
-            ['tasklist', '/FI', 'IMAGENAME eq outlook.exe'],
-            capture_output=True, text=True, timeout=5
-        )
-        if 'outlook.exe' not in result.stdout.lower():
-            # Outlook realmente no está corriendo — abrirlo
-            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
-            time.sleep(10)
-            # Reintentar Dispatch
-            try:
-                outlook = win32com.client.Dispatch("Outlook.Application")
-                return outlook, None
-            except Exception as e:
-                err1 = f"{err1} | después de abrir: {e}"
-    except Exception:
-        pass
-
-    # Todos fallaron
+    # Todos fallaron — NO intentamos abrir Outlook (pv_monitor lo tiene)
     return None, (
         f"No se pudo conectar a Outlook.\n\n"
-        f"Posibles causas:\n"
-        f"• Outlook no está abierto (ábrelo manualmente)\n"
-        f"• Otro programa está bloqueando Outlook\n\n"
+        f"Causa más probable:\n"
+        f"Outlook no está abierto o está bloqueado.\n\n"
         f"Solución:\n"
         f"1. Abre Outlook MANUALMENTE (doble clic en el icono de Outlook)\n"
         f"2. Espera a que cargue (veas la bandeja de entrada)\n"
-        f"3. Dejalo abierto y pulsa 'Preparar en Outlook' otra vez\n\n"
-        f"Errores técnicos:\n- {err1}\n- {err2}\n- {err3}"
+        f"3. NO lo cierres — dejalo abierto\n"
+        f"4. Vuelve a la web y pulsa 'Preparar en Outlook' otra vez\n\n"
+        f"Si Outlook ya está abierto y sigue el error:\n"
+        f"- Cierra Outlook completamente\n"
+        f"- Cierra pv_monitor (clic derecho en su icono → Salir)\n"
+        f"- Abre Outlook manualmente\n"
+        f"- Vuelve a abrir pv_monitor y semain\n"
+        f"Errores técnicos:\n- {err1}\n- {err2}"
     )
 
 
