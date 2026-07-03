@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Mail, ExternalLink, Copy, Download, Send, CheckCircle2 } from 'lucide-react'
+import { Loader2, Mail, ExternalLink, Copy, Download, Send, CheckCircle2, Mailbox, FileText, Image as ImageIcon, FileCode, Zap } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Evaluation } from '@/lib/evaluations'
 
@@ -59,6 +59,28 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {}
+  }
+
+  // Trigger 3 sequential downloads (PDF + chart PNG + Outlook VBScript)
+  // Browsers may ask for permission the first time ("Allow this site to download
+  // multiple files?"). After the user accepts once, future clicks go smoothly.
+  const downloadAllForOutlook = () => {
+    if (!ev) return
+    const urls = [
+      `/api/evaluations/${ev.id}/pdf`,
+      `/api/evaluations/${ev.id}/chart`,
+      `/api/evaluations/${ev.id}/outlook-script`,
+    ]
+    urls.forEach((u, i) => {
+      setTimeout(() => {
+        const a = document.createElement('a')
+        a.href = u
+        a.download = ''
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+      }, i * 600)
+    })
   }
 
   // ----- Option B: server-side SMTP send -----
@@ -112,8 +134,12 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
           <Stat label="Fecha" value={formatDate(ev.fecha)} />
         </div>
 
-        <Tabs defaultValue="mailto" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+        <Tabs defaultValue="outlook" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="outlook">
+              <Mailbox className="w-4 h-4 mr-2" />
+              Outlook automático
+            </TabsTrigger>
             <TabsTrigger value="mailto">
               <ExternalLink className="w-4 h-4 mr-2" />
               Abrir mi correo
@@ -123,6 +149,78 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
               Enviar directo (SMTP)
             </TabsTrigger>
           </TabsList>
+
+          {/* ---------- Option 0: Outlook VBScript (the easy way) ---------- */}
+          <TabsContent value="outlook" className="space-y-4 mt-3">
+            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-900">
+              <p className="font-semibold mb-2 flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                La forma más rápida (recomendada para Outlook en Windows)
+              </p>
+              <p className="text-[13px] mb-2">
+                Descarga los 3 archivos (PDF + gráfica + script de Outlook) en tu carpeta
+                de descargas. Luego <strong>haz doble clic en el script</strong> y se abre
+                Outlook con el correo listo: destinatario, asunto, mensaje, PDF y gráfica
+                adjuntos. Solo presionas <strong>Enviar</strong>.
+              </p>
+              <p className="text-[12px] text-emerald-700">
+                Los navegadores no permiten adjuntar archivos automáticamente a un correo
+                por seguridad. El script usa Outlook de tu computadora para hacerlo.
+              </p>
+            </div>
+
+            {/* One-click "download all" button */}
+            <Button
+              onClick={downloadAllForOutlook}
+              size="lg"
+              className="w-full bg-emerald-600 hover:bg-emerald-700 h-14 text-base"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              Descargar todo (PDF + gráfica + script Outlook)
+            </Button>
+
+            {/* Show individual download buttons too */}
+            <details className="text-sm">
+              <summary className="cursor-pointer text-slate-600 hover:text-slate-900 select-none">
+                ¿O descargar uno por uno?
+              </summary>
+              <div className="flex flex-wrap gap-2 pt-3">
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/api/evaluations/${ev.id}/pdf`} target="_blank" rel="noopener noreferrer" download>
+                    <FileText className="w-4 h-4 mr-1.5" />
+                    PDF
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/api/evaluations/${ev.id}/chart`} target="_blank" rel="noopener noreferrer" download>
+                    <ImageIcon className="w-4 h-4 mr-1.5" />
+                    Gráfica
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="outline">
+                  <a href={`/api/evaluations/${ev.id}/outlook-script`} download>
+                    <FileCode className="w-4 h-4 mr-1.5" />
+                    Script Outlook (.vbs)
+                  </a>
+                </Button>
+              </div>
+            </details>
+
+            <ol className="text-sm text-slate-700 space-y-1.5 list-decimal list-inside bg-slate-50 border border-slate-200 rounded-md p-4">
+              <li>Pulsa el botón verde de arriba. Se descargan 3 archivos en tu carpeta de Descargas.</li>
+              <li>Si tu navegador pregunta &ldquo;¿Descargar varios archivos?&rdquo;, di que <strong>sí</strong>.</li>
+              <li>Abre tu carpeta de Descargas.</li>
+              <li>Haz <strong>doble clic</strong> en el archivo <code className="bg-slate-200 px-1 rounded">Preparar-correo-{ev.proveedor.replace(/\s+/g, '_').slice(0, 30)}.vbs</code></li>
+              <li>Outlook se abre con TODO listo. Solo presiona <strong>Enviar</strong>.</li>
+            </ol>
+
+            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3">
+              <strong>Requisitos:</strong> Windows con Microsoft Outlook instalado y
+              configurado. Si usas Mac o Gmail web, usa mejor la pestaña
+              <strong> &ldquo;Abrir mi correo&rdquo;</strong>.
+            </div>
+          </TabsContent>
+
 
           {/* ---------- Option A: mailto ---------- */}
           <TabsContent value="mailto" className="space-y-3 mt-3">
