@@ -99,12 +99,19 @@ function truncate(s: string, maxLen: number): string {
   return s.slice(0, maxLen - 1) + '…'
 }
 
+// SEMAIN brand colors (extracted from logo)
+// - Logo green: ~#A0CD50 (lime/leaf green)
+// - Logo dark: ~#302C2B (charcoal)
+const SEMAIN_GREEN = '#A0CD50'
+const SEMAIN_GREEN_DARK = '#7BA635'
+const SEMAIN_DARK = '#302C2B'
+
 function classificationColor(c: string): string {
   switch (c) {
-    case 'EXCELENTE': return '#10b981'
-    case 'BUENO': return '#0ea5e9'
-    case 'REGULAR': return '#f59e0b'
-    case 'MALO': return '#f43f5e'
+    case 'EXCELENTE': return '#A0CD50'  // SEMAIN green
+    case 'BUENO': return '#5B9BD5'      // soft blue
+    case 'REGULAR': return '#F0A030'    // amber
+    case 'MALO': return '#D9534F'       // muted red
     default: return '#64748b'
   }
 }
@@ -123,38 +130,40 @@ function buildChartSVG(
   const W = 1400
   const padL = 50
   const padR = 50
-  const padTop = 130 // header with logo + title
-  const padBottom = 200 // table + legend
+  const padTop = 120 // header with logo + title
   const nameColW = 320 // provider name column
   const barStart = padL + nameColW + 20
   const barEnd = W - padR - 120 // leave room for score + classification text
   const chartW = barEnd - barStart
 
   // Row dimensions
-  const rowH = n <= 6 ? 48 : n <= 10 ? 40 : n <= 15 ? 32 : 26
-  const rowGap = n <= 6 ? 12 : n <= 10 ? 8 : 6
+  const rowH = n <= 6 ? 48 : n <= 10 ? 42 : n <= 15 ? 34 : 28
+  const rowGap = n <= 6 ? 14 : n <= 10 ? 10 : 8
   const chartH = n * (rowH + rowGap)
-  const tableTop = padTop + chartH + 40
-  const H = tableTop + 140 + 40
+  const legendY = padTop + chartH + 30
+  const H = legendY + 50 // chart + legend, NO table
 
-  // Header
+  // Header — SEMAIN brand colors: dark charcoal background + green accent line
+  // Logo aligned LEFT, title centered, date on right
   let header = `
-    <rect x="0" y="0" width="${W}" height="${padTop - 20}" fill="#0f172a"/>
+    <rect x="0" y="0" width="${W}" height="${padTop - 20}" fill="${SEMAIN_DARK}"/>
+    <rect x="0" y="${padTop - 22}" width="${W}" height="3" fill="${SEMAIN_GREEN}"/>
   `
   if (logoBase64) {
-    header += `<image href="${logoBase64}" x="${padL}" y="25" height="60" preserveAspectRatio="xMidYMid meet"/>`
+    // Logo on the LEFT, vertically centered in header
+    header += `<image href="${logoBase64}" x="${padL}" y="30" height="55" preserveAspectRatio="xMidYMid meet"/>`
   }
   header += `
-    <text x="${W / 2}" y="50" text-anchor="middle" font-family="Carlito" font-size="26" font-weight="700" fill="#ffffff">
+    <text x="${W / 2}" y="55" text-anchor="middle" font-family="Carlito" font-size="24" font-weight="700" fill="#ffffff">
       Comparativo de Evaluación de Proveedores
     </text>
-    <text x="${W / 2}" y="78" text-anchor="middle" font-family="Carlito" font-size="14" fill="#cbd5e1">
+    <text x="${W / 2}" y="80" text-anchor="middle" font-family="Carlito" font-size="13" fill="${SEMAIN_GREEN}">
       Posición de ${escapeXml(target?.proveedor ?? '')} frente a ${n - 1} proveedor${n - 1 === 1 ? '' : 'es'} evaluado${n - 1 === 1 ? '' : 's'}
     </text>
-    <text x="${W - padR}" y="50" text-anchor="end" font-family="Carlito" font-size="13" fill="#94a3b8">
+    <text x="${W - padR}" y="50" text-anchor="end" font-family="Carlito" font-size="13" fill="#cbd5e1">
       ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
     </text>
-    <text x="${W - padR}" y="72" text-anchor="end" font-family="Carlito" font-size="12" fill="#64748b">
+    <text x="${W - padR}" y="72" text-anchor="end" font-family="Carlito" font-size="12" fill="#94a3b8">
       Escala 0 - 100
     </text>
   `
@@ -170,15 +179,15 @@ function buildChartSVG(
   // Classification zone backgrounds (very subtle)
   let zones = ''
   const zones_data = [
-    { from: 91, to: 100, color: '#10b981', label: 'EXCELENTE' },
-    { from: 71, to: 91, color: '#0ea5e9', label: 'BUENO' },
-    { from: 51, to: 71, color: '#f59e0b', label: 'REGULAR' },
-    { from: 0, to: 51, color: '#f43f5e', label: 'MALO' },
+    { from: 91, to: 100, color: SEMAIN_GREEN, label: 'EXCELENTE' },
+    { from: 71, to: 91, color: '#5B9BD5', label: 'BUENO' },
+    { from: 51, to: 71, color: '#F0A030', label: 'REGULAR' },
+    { from: 0, to: 51, color: '#D9534F', label: 'MALO' },
   ]
   for (const z of zones_data) {
     const x1 = barStart + (z.from / 100) * chartW
     const x2 = barStart + (z.to / 100) * chartW
-    zones += `<rect x="${x1}" y="${padTop - 10}" width="${x2 - x1}" height="${chartH + 15}" fill="${z.color}" opacity="0.04"/>`
+    zones += `<rect x="${x1}" y="${padTop - 10}" width="${x2 - x1}" height="${chartH + 15}" fill="${z.color}" opacity="0.05"/>`
   }
 
   // Bars
@@ -191,88 +200,51 @@ function buildChartSVG(
     const providerLabel = truncate(e.proveedor, 42)
     const scoreText = e.calificacion.toFixed(1)
 
-    // Row background highlight for target
+    // Row background highlight for target — use SEMAIN green tint
     if (isTarget) {
-      bars += `<rect x="${padL - 10}" y="${y - 4}" width="${W - padL - padR + 20}" height="${rowH + 8}" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>`
+      bars += `<rect x="${padL - 10}" y="${y - 4}" width="${W - padL - padR + 20}" height="${rowH + 8}" rx="6" fill="#E8F2D5" stroke="${SEMAIN_GREEN}" stroke-width="1.5"/>`
     } else if (i % 2 === 0) {
       bars += `<rect x="${padL - 5}" y="${y - 2}" width="${W - padL - padR + 10}" height="${rowH + 4}" fill="#f8fafc"/>`
     }
 
-    // Rank number
-    bars += `<text x="${padL}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="13" font-weight="700" fill="#64748b">#${i + 1}</text>`
+    // Rank number — use SEMAIN green for target
+    bars += `<text x="${padL}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="13" font-weight="700" fill="${isTarget ? SEMAIN_GREEN_DARK : '#64748b'}">#${i + 1}</text>`
 
     // Provider name
-    bars += `<text x="${padL + 35}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="${isTarget ? 700 : 500}" fill="${isTarget ? '#0f172a' : '#334155'}">${escapeXml(providerLabel)}</text>`
+    bars += `<text x="${padL + 35}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="${isTarget ? 700 : 500}" fill="${isTarget ? SEMAIN_DARK : '#334155'}">${escapeXml(providerLabel)}</text>`
 
     // Bar
-    bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="${barColor}" opacity="${isTarget ? 1 : 0.75}"/>`
+    bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="${barColor}" opacity="${isTarget ? 1 : 0.78}"/>`
     if (isTarget) {
-      bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="none" stroke="#0f172a" stroke-width="2"/>`
+      bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="none" stroke="${SEMAIN_DARK}" stroke-width="2"/>`
     }
 
     // Score text (after the bar)
-    bars += `<text x="${barStart + w + 8}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="700" fill="${isTarget ? '#0f172a' : '#475569'}">${scoreText}</text>`
+    bars += `<text x="${barStart + w + 8}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="700" fill="${isTarget ? SEMAIN_DARK : '#475569'}">${scoreText}</text>`
 
     // Classification text (at the right)
     bars += `<text x="${barEnd + 15}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="12" font-weight="600" fill="${barColor}">${e.clasificacion}</text>`
   })
 
-  // Legend at bottom of chart
-  const legendY = padTop + chartH + 40
-  let legend = `<text x="${padL}" y="${legendY}" font-family="Carlito" font-size="12" font-weight="700" fill="#475569">Clasificación:</text>`
+  // Legend at bottom of chart — NO table below
+  let legend = `<text x="${padL}" y="${legendY}" font-family="Carlito" font-size="12" font-weight="700" fill="${SEMAIN_DARK}">Clasificación:</text>`
   const legendItems = [
-    { label: 'EXCELENTE (91-100)', color: '#10b981' },
-    { label: 'BUENO (71-90)', color: '#0ea5e9' },
-    { label: 'REGULAR (51-70)', color: '#f59e0b' },
-    { label: 'MALO (0-50)', color: '#f43f5e' },
+    { label: 'EXCELENTE (91-100)', color: SEMAIN_GREEN },
+    { label: 'BUENO (71-90)', color: '#5B9BD5' },
+    { label: 'REGULAR (51-70)', color: '#F0A030' },
+    { label: 'MALO (0-50)', color: '#D9534F' },
   ]
   legendItems.forEach((item, i) => {
-    const x = padL + 110 + i * 200
+    const x = padL + 110 + i * 220
     legend += `<rect x="${x}" y="${legendY - 10}" width="14" height="14" rx="2" fill="${item.color}"/>`
     legend += `<text x="${x + 20}" y="${legendY + 1}" font-family="Carlito" font-size="11" fill="#475569">${item.label}</text>`
   })
 
-  // Compact data table below
-  const tableY = legendY + 30
-  const colX = {
-    rank: padL,
-    name: padL + 40,
-    score: padL + 40 + 360,
-    class: padL + 40 + 360 + 100,
-    date: padL + 40 + 360 + 100 + 130,
-  }
-  const colWidths = {
-    rank: 35,
-    name: 360,
-    score: 100,
-    class: 130,
-    date: 120,
-  }
-  let table = `
-    <rect x="${padL}" y="${tableY}" width="${W - padL - padR}" height="32" fill="#0f172a" rx="4"/>
-    <text x="${colX.rank + colWidths.rank / 2}" y="${tableY + 21}" text-anchor="middle" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">#</text>
-    <text x="${colX.name + 10}" y="${tableY + 21}" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">PROVEEDOR</text>
-    <text x="${colX.score + colWidths.score / 2}" y="${tableY + 21}" text-anchor="middle" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">CALIFICACIÓN</text>
-    <text x="${colX.class + 10}" y="${tableY + 21}" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">CLASIFICACIÓN</text>
-    <text x="${colX.date + 10}" y="${tableY + 21}" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">FECHA</text>
-  `
-  sorted.forEach((e, i) => {
-    const y = tableY + 32 + i * 24
-    const isTarget = e.id === highlightId
-    const bgColor = isTarget ? '#fef3c7' : (i % 2 === 0 ? '#f1f5f9' : '#ffffff')
-    table += `<rect x="${padL}" y="${y}" width="${W - padL - padR}" height="24" fill="${bgColor}"/>`
-    table += `<text x="${colX.rank + colWidths.rank / 2}" y="${y + 16}" text-anchor="middle" font-family="Carlito" font-size="11" font-weight="700" fill="#64748b">${i + 1}</text>`
-    table += `<text x="${colX.name + 10}" y="${y + 16}" font-family="Carlito" font-size="11" font-weight="${isTarget ? 700 : 400}" fill="${isTarget ? '#0f172a' : '#334155'}">${escapeXml(truncate(e.proveedor, 45))}</text>`
-    table += `<text x="${colX.score + colWidths.score / 2}" y="${y + 16}" text-anchor="middle" font-family="Carlito" font-size="11" font-weight="700" fill="#0f172a">${e.calificacion.toFixed(1)}</text>`
-    table += `<text x="${colX.class + 10}" y="${y + 16}" font-family="Carlito" font-size="11" font-weight="600" fill="${classificationColor(e.clasificacion)}">${e.clasificacion}</text>`
-    table += `<text x="${colX.date + 10}" y="${y + 16}" font-family="Carlito" font-size="11" fill="#64748b">${formatDate(e.fecha)}</text>`
-  })
-
-  // Footer note
-  const footerY = tableY + 32 + sorted.length * 24 + 20
+  // Footer note (no table)
+  const footerY = legendY + 25
   const footer = `
     <text x="${padL}" y="${footerY}" font-family="Carlito" font-size="11" fill="#94a3b8">
-      El proveedor evaluado aparece resaltado en amarillo. La gráfica muestra la posición comparativa entre todos los proveedores evaluados.
+      El proveedor evaluado aparece resaltado. La gráfica muestra la posición comparativa entre todos los proveedores evaluados.
     </text>
     <text x="${W - padR}" y="${footerY}" text-anchor="end" font-family="Carlito" font-size="11" fill="#94a3b8">
       SEMAIN · F-CAL-07 REV01
@@ -288,7 +260,6 @@ function buildChartSVG(
   ${gridlines}
   ${bars}
   ${legend}
-  ${table}
   ${footer}
 </svg>`
 }

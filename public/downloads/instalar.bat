@@ -60,14 +60,14 @@ echo   Paso 3: Creando acceso directo en el Escritorio...
 echo ================================================================
 
 set "SCRIPT_DIR=%~dp0"
-set "SCRIPT_PATH=%SCRIPT_DIR%semain_tray.py"
+set "VBS_PATH=%SCRIPT_DIR%iniciar.vbs"
 set "DESKTOP=%USERPROFILE%\Desktop"
 
 echo Set oWS = WScript.CreateObject("WScript.Shell") > "%TEMP%\create_shortcut.vbs"
 echo sLinkFile = "%DESKTOP%\SEMAIN - Asistente.lnk" >> "%TEMP%\create_shortcut.vbs"
 echo Set oLink = oWS.CreateShortcut(sLinkFile) >> "%TEMP%\create_shortcut.vbs"
-echo oLink.TargetPath = "pythonw.exe" >> "%TEMP%\create_shortcut.vbs"
-echo oLink.Arguments = """%SCRIPT_PATH%""" >> "%TEMP%\create_shortcut.vbs"
+echo oLink.TargetPath = "wscript.exe" >> "%TEMP%\create_shortcut.vbs"
+echo oLink.Arguments = """%VBS_PATH%""" >> "%TEMP%\create_shortcut.vbs"
 echo oLink.WorkingDirectory = "%SCRIPT_DIR%" >> "%TEMP%\create_shortcut.vbs"
 echo oLink.IconLocation = "shell32.dll,13" >> "%TEMP%\create_shortcut.vbs"
 echo oLink.Description = "SEMAIN - Asistente de Evaluacion de Proveedores" >> "%TEMP%\create_shortcut.vbs"
@@ -82,9 +82,9 @@ echo ================================================================
 echo   Instalacion completada.
 echo ================================================================
 echo.
-echo Para iniciar el programa:
+echo Para iniciar el programa (sin ventana de consola):
 echo   - Haz doble clic en "SEMAIN - Asistente" en el Escritorio
-echo   - O haz doble clic en iniciar.bat en esta carpeta
+echo   - O haz doble clic en iniciar.vbs en esta carpeta
 echo.
 echo Veras un icono verde con "S" en la bandeja del sistema (junto al reloj).
 echo.

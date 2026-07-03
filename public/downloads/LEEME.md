@@ -9,10 +9,11 @@ gráfica, los guarda en la carpeta correcta, y abre Outlook con todo listo.
 1. Instala Python 3.10+ desde https://python.org
    - **IMPORTANTE**: Marca la casilla "Add Python to PATH" al instalar
 
-2. Descarga estos 4 archivos y ponlos en una carpeta (por ejemplo `C:\SEMAIN\`):
+2. Descarga estos 5 archivos y ponlos en una carpeta (por ejemplo `C:\SEMAIN\`):
    - `semain_tray.py`
    - `instalar.bat`
-   - `iniciar.bat`
+   - `iniciar.vbs` ← arranca silenciosamente (sin ventana)
+   - `iniciar.bat` ← alternativa que llama al VBS
    - `LEEME.md` (este archivo)
 
 3. Haz **doble clic en `instalar.bat`**
@@ -22,7 +23,9 @@ gráfica, los guarda en la carpeta correcta, y abre Outlook con todo listo.
 ## Uso diario
 
 1. **Inicia el programa**: Doble clic en el acceso directo "SEMAIN - Asistente"
-   del Escritorio, o doble clic en `iniciar.bat`
+   del Escritorio, o doble clic en `iniciar.vbs`
+   - **NO abre ninguna ventana** — todo es en segundo plano
+   - Aparece un icono verde con "S" en la bandeja del sistema
    - Aparece un icono verde con "S" en la bandeja del sistema (junto al reloj)
 
 2. **Abre la página web**: https://my-project-mu-tan.vercel.app/

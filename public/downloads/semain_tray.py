@@ -3,8 +3,9 @@
   SEMAIN - Asistente de Evaluación de Proveedores (Outlook Tray)
 ===================================================================
 
-Este programa se ejecuta en segundo plano en tu computadora (Windows).
+Este programa se ejecuta EN SEGUNDO PLANO en tu computadora (Windows).
 Aparece como un icono verde con "S" en la bandeja del sistema (system tray).
+NO abre ninguna ventana de consola.
 
 ¿Qué hace?
   1. Escucha en http://127.0.0.1:8765
@@ -23,7 +24,7 @@ Aparece como un icono verde con "S" en la bandeja del sistema (system tray).
 ¿Cómo instalarlo?
   1. Instala Python 3.10+ desde https://python.org (marca "Add to PATH")
   2. Haz doble clic en instalar.bat para instalar dependencias
-  3. Haz doble clic en iniciar.bat para arrancar el programa
+  3. Haz doble clic en iniciar.vbs para arrancar el programa (silencioso)
   4. Verás un icono verde con "S" en la bandeja del sistema
 
 ¿Cómo usarlo?
@@ -45,6 +46,21 @@ import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+
+# ====================================================================
+# CRITICAL: Initialize COM BEFORE importing win32com.client
+# This fixes the "CoInitialize has not been called" error.
+# pythoncom.CoInitialize() must be called from the main thread before
+# any COM object is created.
+# ====================================================================
+try:
+    import pythoncom
+    pythoncom.CoInitialize()
+    print("[SEMAIN] COM initialized OK")
+except ImportError:
+    print("[SEMAIN] WARNING: pywin32 not installed. Outlook will not work.")
+except Exception as e:
+    print(f"[SEMAIN] WARNING: CoInitialize failed: {e}")
 
 # Dependencies: pip install pystray pillow requests pywin32
 import requests
@@ -101,15 +117,6 @@ def prepare_outlook_email(data):
     """
     Downloads PDF + chart, saves them to the year/month folder,
     and opens Outlook with everything ready to send.
-
-    data = {
-        providerName: "SERVIACERO",
-        email: "JOSE.ALEMAN@SERVIACERO.COM",
-        subject: "Evaluación de Proveedor - ...",
-        body: "Estimado equipo...",
-        pdfUrl: "https://.../api/evaluations/.../pdf",
-        chartUrl: "https://.../api/evaluations/.../chart"
-    }
     """
     # 1. Get save folder
     save_folder = get_save_folder()
@@ -128,7 +135,7 @@ def prepare_outlook_email(data):
     print(f"[SEMAIN] Descargando gráfica: {chart_filename}")
     download_file(data['chartUrl'], chart_path)
 
-    # 4. Open Outlook
+    # 4. Open Outlook — ensure COM is initialized for this thread
     if not HAS_OUTLOOK:
         return {
             'success': True,
@@ -136,26 +143,41 @@ def prepare_outlook_email(data):
             'warning': 'Outlook no disponible. Los archivos se guardaron pero no se abrió Outlook.'
         }
 
+    # CRITICAL: CoInitialize for the current thread (HTTP handler thread)
+    try:
+        pythoncom.CoInitialize()
+    except Exception:
+        pass
+
     print("[SEMAIN] Abriendo Outlook...")
-    outlook = win32com.client.Dispatch("Outlook.Application")
-    mail = outlook.CreateItem(0)
-    mail.To = data.get('email', '')
-    mail.Subject = data.get('subject', '')
-    mail.Body = data.get('body', '')
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        mail = outlook.CreateItem(0)
+        mail.To = data.get('email', '')
+        mail.Subject = data.get('subject', '')
+        mail.Body = data.get('body', '')
 
-    # Add attachments
-    mail.Attachments.Add(str(pdf_path))
-    mail.Attachments.Add(str(chart_path))
+        # Add attachments
+        mail.Attachments.Add(str(pdf_path))
+        mail.Attachments.Add(str(chart_path))
 
-    # Display (don't auto-send — let user review)
-    mail.Display()
+        # Display (don't auto-send — let user review)
+        mail.Display()
 
-    return {
-        'success': True,
-        'savedTo': str(save_folder),
-        'pdfFile': str(pdf_path),
-        'chartFile': str(chart_path)
-    }
+        return {
+            'success': True,
+            'savedTo': str(save_folder),
+            'pdfFile': str(pdf_path),
+            'chartFile': str(chart_path)
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'error': f'Error al abrir Outlook: {e}',
+            'savedTo': str(save_folder),
+            'pdfFile': str(pdf_path),
+            'chartFile': str(chart_path)
+        }
 
 
 def sanitize_filename(s):
@@ -171,7 +193,7 @@ def sanitize_filename(s):
 # ====================================================================
 class RequestHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
-        # Suppress default logging
+        # Suppress default logging (we run silently)
         pass
 
     def _send_cors_headers(self):
@@ -197,7 +219,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.path == '/status':
             self._send_json(200, {
                 'running': True,
-                'version': '1.0',
+                'version': '1.1',
                 'outlook': HAS_OUTLOOK,
                 'savePath': str(BASE_SAVE_PATH),
             })
@@ -215,10 +237,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 result = prepare_outlook_email(data)
 
                 # Show notification
-                show_notification(
-                    f"Correo preparado para {data.get('providerName', '?')}",
-                    f"Archivos guardados en: {result.get('savedTo', '')}\nOutlook abierto con PDF y gráfica adjuntos."
-                )
+                if result.get('success'):
+                    show_notification(
+                        f"Correo preparado para {data.get('providerName', '?')}",
+                        f"Archivos guardados y Outlook abierto con PDF y gráfica adjuntos."
+                    )
+                else:
+                    show_notification(
+                        "Error",
+                        result.get('error', 'Error desconocido')
+                    )
 
                 self._send_json(200, result)
             except Exception as e:
@@ -243,9 +271,9 @@ def create_icon_image():
     size = 64
     img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # Green circle
-    draw.ellipse([2, 2, size - 2, size - 2], fill='#10b981')
-    # White "S"
+    # Green circle (SEMAIN brand green: #A0CD50)
+    draw.ellipse([2, 2, size - 2, size - 2], fill='#A0CD50')
+    # Dark "S" (SEMAIN brand dark: #302C2B)
     try:
         font = ImageFont.truetype("arial.ttf", 38)
     except:
@@ -256,7 +284,7 @@ def create_icon_image():
     text_h = bbox[3] - bbox[1]
     x = (size - text_w) / 2 - bbox[0]
     y = (size - text_h) / 2 - bbox[1]
-    draw.text((x, y), "S", fill='white', font=font)
+    draw.text((x, y), "S", fill='#302C2B', font=font)
     return img
 
 
@@ -283,7 +311,7 @@ def on_status(icon, item):
     folder = get_save_folder()
     show_notification(
         "SEMAIN - Estado",
-        f"Servidor activo en puerto {PORT}\nOutlook: {'✓' if HAS_OUTLOOK else '✗'}\nGuardar en: {folder}"
+        f"Servidor activo en puerto {PORT}\nOutlook: {'OK' if HAS_OUTLOOK else 'NO'}\nGuardar en: {folder}"
     )
 
 
@@ -302,7 +330,7 @@ def setup_tray():
         Menu.SEPARATOR,
         item('Salir', on_quit),
     )
-    _icon = pystray.Icon("semain", image, "SEMAIN - Evaluación de Proveedores", menu)
+    _icon = pystray.Icon("semain", image, "SEMAIN - Evaluacion de Proveedores", menu)
 
     # Start HTTP server in background thread
     server_thread = threading.Thread(target=start_server, daemon=True)
@@ -312,7 +340,7 @@ def setup_tray():
     time.sleep(1)
     show_notification(
         "SEMAIN iniciado",
-        f"Servidor activo en puerto {PORT}\nListo para preparar correos de evaluación."
+        f"Servidor activo en puerto {PORT}\nListo para preparar correos de evaluacion."
     )
 
     # Run tray icon (blocks)
@@ -323,21 +351,13 @@ def setup_tray():
 # Main
 # ====================================================================
 if __name__ == '__main__':
-    print("=" * 60)
-    print("  SEMAIN - Asistente de Evaluación de Proveedores")
-    print("=" * 60)
-    print(f"  Puerto: {PORT}")
-    print(f"  Outlook: {'✓ Disponible' if HAS_OUTLOOK else '✗ No disponible'}")
-    print(f"  Guardar en: {BASE_SAVE_PATH}")
-    print("=" * 60)
-    print()
-    print("  El programa está corriendo en segundo plano.")
-    print("  Verás un icono verde con 'S' en la bandeja del sistema.")
-    print("  Clic derecho en el icono para opciones.")
-    print()
-
+    # All output goes to a log file instead of console (we run silently)
+    # This helps debugging if something goes wrong
     try:
         setup_tray()
     except Exception as e:
-        print(f"Error: {e}")
-        input("Presiona Enter para cerrar...")
+        # Log error to file for debugging
+        log_path = Path.home() / "semain_error.log"
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write(f"Error: {e}\n")
+        os._exit(1)
