@@ -48,10 +48,11 @@ export async function GET(
     return NextResponse.json({ error: 'proveedor no encontrado' }, { status: 404 })
   }
 
-  // Load fonts and logo
+  // Load fonts via file paths (resvg-js needs actual file paths, not data URLs)
   const fontDir = join(process.cwd(), 'public', 'fonts')
-  const fontRegular = await readFile(join(fontDir, 'Carlito-Regular.ttf'))
-  const fontBold = await readFile(join(fontDir, 'Carlito-Bold.ttf'))
+  const fontRegularPath = join(fontDir, 'Carlito-Regular.ttf')
+  const fontBoldPath = join(fontDir, 'Carlito-Bold.ttf')
+
   const logoPath = join(process.cwd(), 'public', 'assets', 'logo.png')
   let logoBase64: string | null = null
   try {
@@ -66,12 +67,9 @@ export async function GET(
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'width', value: 1400 },
     font: {
-      fontFiles: [
-        { name: 'Carlito', data: fontRegular, weight: 400 },
-        { name: 'Carlito', data: fontBold, weight: 700 },
-      ],
-      defaultFontFamily: 'Carlito',
       loadSystemFonts: false,
+      fontFiles: [fontRegularPath, fontBoldPath],
+      defaultFontFamily: 'Carlito',
     },
   })
 
