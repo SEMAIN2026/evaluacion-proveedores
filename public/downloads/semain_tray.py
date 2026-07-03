@@ -98,6 +98,51 @@ def download_file(url, filepath):
     return filepath
 
 
+def get_outlook_app():
+    """
+    Connect to Outlook. Try in order:
+      1. GetActiveObject — connect to a running Outlook instance (preferred,
+         avoids the 'only one version can run at a time' error)
+      2. Dispatch — start a new instance
+      3. DispatchEx — start a new instance in a separate process
+    Returns (outlook_app, error_message_or_None).
+    """
+    # 1. Try to connect to running Outlook
+    try:
+        import pythoncom
+        outlook = win32com.client.GetActiveObject("Outlook.Application")
+        return outlook, None
+    except Exception:
+        pass
+
+    # 2. Try Dispatch (will reuse or start new)
+    try:
+        outlook = win32com.client.Dispatch("Outlook.Application")
+        return outlook, None
+    except Exception as e:
+        err1 = str(e)
+
+    # 3. Try DispatchEx (forces new instance in separate process)
+    try:
+        outlook = win32com.client.DispatchEx("Outlook.Application")
+        return outlook, None
+    except Exception as e:
+        err2 = str(e)
+
+    # All failed
+    return None, (
+        f"No se pudo conectar a Outlook. Intenta lo siguiente:\n\n"
+        f"1. Abre Outlook MANUALMENTE (doble clic en el icono de Outlook)\n"
+        f"2. Espera a que cargue por completo (veas la bandeja de entrada)\n"
+        f"3. NO lo cierres — dejalo abierto\n"
+        f"4. Vuelve a la web y pulsa 'Preparar en Outlook' otra vez\n\n"
+        f"Si Outlook sigue dando error, abre el Administrador de Tareas "
+        f"(Ctrl+Shift+Esc), termina todos los procesos OUTLOOK.EXE, y "
+        f"vuelve a abrir Outlook manualmente.\n\n"
+        f"Errores tecnicos:\n- {err1}\n- {err2}"
+    )
+
+
 def prepare_outlook_email(data):
     save_folder = get_save_folder()
 
@@ -122,8 +167,18 @@ def prepare_outlook_email(data):
     except Exception:
         pass
 
+    # Connect to Outlook (try running instance first, then new)
+    outlook, outlook_err = get_outlook_app()
+    if outlook is None:
+        return {
+            'success': False,
+            'error': outlook_err,
+            'savedTo': str(save_folder),
+            'pdfFile': str(pdf_path),
+            'chartFile': str(chart_path)
+        }
+
     try:
-        outlook = win32com.client.Dispatch("Outlook.Application")
         mail = outlook.CreateItem(0)
         mail.To = data.get('email', '')
         mail.Subject = data.get('subject', '')
@@ -141,9 +196,30 @@ def prepare_outlook_email(data):
             'chartFile': str(chart_path)
         }
     except Exception as e:
+        err_msg = str(e)
+        # Detect the "server execution failed" error specifically
+        if '-2146959355' in err_msg or '80080005' in err_msg:
+            helpful = (
+                f"Outlook no responde. Para arreglarlo:\n\n"
+                f"1. Abre Outlook MANUALMENTE con doble clic\n"
+                f"2. Si Outlook da error, abre Administrador de Tareas "
+                f"(Ctrl+Shift+Esc)\n"
+                f"3. Termina TODOS los procesos OUTLOOK.EXE\n"
+                f"4. Abre Outlook de nuevo manualmente\n"
+                f"5. Dejalo abierto y pulsa 'Preparar en Outlook' otra vez\n\n"
+                f"Error tecnico: {err_msg}"
+            )
+        elif '-2147221008' in err_msg:
+            helpful = (
+                f"Error de inicializacion COM. Reinicia la app de SEMAIN "
+                f"(clic derecho en icono verde → Salir, y vuelve a abrirla).\n\n"
+                f"Error tecnico: {err_msg}"
+            )
+        else:
+            helpful = f'Error al crear el correo: {err_msg}'
         return {
             'success': False,
-            'error': f'Error al abrir Outlook: {e}',
+            'error': helpful,
             'savedTo': str(save_folder),
             'pdfFile': str(pdf_path),
             'chartFile': str(chart_path)
