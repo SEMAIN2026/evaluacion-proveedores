@@ -9,7 +9,6 @@ import {
   View,
   StyleSheet,
   Image as PdfImage,
-  Canvas,
 } from '@react-pdf/renderer'
 import { readFile } from 'fs/promises'
 import { join } from 'path'
@@ -105,10 +104,11 @@ export async function GET(
 
 // ============== Constants matching the original F-CAL-07 sample ==============
 // A4 portrait: 595.28 x 841.89 pt
+// All coordinates below use TOP-LEFT origin (PyMuPDF / CSS convention)
+// y=0 is the TOP of the page, y increases DOWNWARD.
 const PAGE_W = 595.28
 const PAGE_H = 841.89
 
-// Layout constants (from sample PDF inspection)
 const M_LEFT = 44.5
 const M_RIGHT = 543.08
 const CONTENT_W = M_RIGHT - M_LEFT
@@ -159,9 +159,23 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
     'Envío de material completo',
   ]
 
-  // Convert PDF bottom-left origin to top-left for @react-pdf (which uses top-left)
-  // y_top = PAGE_H - y_bottom
-  const yTop = (yBottom: number) => PAGE_H - yBottom
+  // Helper to create absolute-positioned text
+  const txt = (x: number, y: number, text: string, opts: {
+    font?: string
+    size?: number
+    color?: string
+    width?: number
+    align?: 'left' | 'center' | 'right'
+  } = {}) => ({
+    position: 'absolute' as const,
+    left: x,
+    top: y,
+    width: opts.width,
+    textAlign: opts.align,
+    fontFamily: opts.font || 'Helvetica',
+    fontSize: opts.size || 9,
+    color: opts.color || BLACK,
+  })
 
   return (
     <Document
@@ -175,37 +189,10 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         style={{ margin: 0, padding: 0, position: 'relative' }}
       >
         {/* ============== 1. HEADER BAND (y=22 to y=74.3) ============== */}
-        {/* 3-column background */}
-        <View
-          style={{
-            position: 'absolute',
-            left: M_LEFT,
-            top: yTop(74.3),
-            width: COL1_RIGHT - M_LEFT,
-            height: 52.3,
-            backgroundColor: WHITE,
-          }}
-        />
-        <View
-          style={{
-            position: 'absolute',
-            left: COL1_RIGHT,
-            top: yTop(74.3),
-            width: COL2_RIGHT - COL1_RIGHT,
-            height: 52.3,
-            backgroundColor: LIGHT_BLUE,
-          }}
-        />
-        <View
-          style={{
-            position: 'absolute',
-            left: COL2_RIGHT,
-            top: yTop(74.3),
-            width: M_RIGHT - COL2_RIGHT,
-            height: 52.3,
-            backgroundColor: LIGHT_BLUE,
-          }}
-        />
+        {/* 3-column background fills */}
+        <View style={{ position: 'absolute', left: M_LEFT, top: 22, width: COL1_RIGHT - M_LEFT, height: 52.3, backgroundColor: WHITE }} />
+        <View style={{ position: 'absolute', left: COL1_RIGHT, top: 22, width: COL2_RIGHT - COL1_RIGHT, height: 52.3, backgroundColor: LIGHT_BLUE }} />
+        <View style={{ position: 'absolute', left: COL2_RIGHT, top: 22, width: M_RIGHT - COL2_RIGHT, height: 52.3, backgroundColor: LIGHT_BLUE }} />
 
         {/* Logo (left column, centered) */}
         {logoDataUrl && (
@@ -214,7 +201,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
             style={{
               position: 'absolute',
               left: M_LEFT + 4,
-              top: yTop(70),
+              top: 26,
               width: COL1_RIGHT - M_LEFT - 8,
               height: 44,
               objectFit: 'contain',
@@ -222,12 +209,12 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           />
         )}
 
-        {/* Title (middle column, centered) - sized to fit Helvetica-Bold */}
+        {/* Title (middle column, centered) */}
         <Text
           style={{
             position: 'absolute',
             left: COL1_RIGHT,
-            top: yTop(56),
+            top: 42,
             width: COL2_RIGHT - COL1_RIGHT,
             textAlign: 'center',
             fontFamily: 'Helvetica-Bold',
@@ -239,207 +226,84 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         </Text>
 
         {/* Code & date (right column) */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: 475.9,
-            top: yTop(56),
-            fontFamily: 'Helvetica',
-            fontSize: 8,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 475.9, top: 39, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>
           F-CAL-07 REV01
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 475.9,
-            top: yTop(45),
-            fontFamily: 'Helvetica',
-            fontSize: 8,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 475.9, top: 50, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>
           05/07/2021
         </Text>
 
         {/* Black vertical separators (header) */}
         {[M_LEFT, COL1_RIGHT, COL2_RIGHT, M_RIGHT].map((x, i) => (
-          <View
-            key={`hdr-sep-${i}`}
-            style={{
-              position: 'absolute',
-              left: x - 1,
-              top: yTop(74.3),
-              width: 2,
-              height: 52.3,
-              backgroundColor: BLACK,
-            }}
-          />
+          <View key={`hdr-sep-${i}`} style={{ position: 'absolute', left: x - 1, top: 22, width: 2, height: 52.3, backgroundColor: BLACK }} />
         ))}
 
         {/* ============== 2. INFO BAND (y=74.3 to y=117.9) ============== */}
-        <View
-          style={{
-            position: 'absolute',
-            left: M_LEFT,
-            top: yTop(117.9),
-            width: M_RIGHT - M_LEFT,
-            height: 43.6,
-            backgroundColor: LIGHT_BLUE,
-          }}
-        />
+        <View style={{ position: 'absolute', left: M_LEFT, top: 74.3, width: M_RIGHT - M_LEFT, height: 43.6, backgroundColor: LIGHT_BLUE }} />
 
         {/* Labels */}
-        <Text style={infoLabelStyle(M_LEFT + 1.7, 82.3)}>NOMBRE DEL PROVEEDOR</Text>
-        <Text style={infoLabelStyle(M_LEFT + 1.7, 96.8)}>CORREO ELECTRONICO</Text>
-        <Text style={infoLabelStyle(M_LEFT + 1.7, 111.3)}>FECHA DE EVALUACIÓN</Text>
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 78.3, fontFamily: 'Helvetica-Bold', fontSize: 9, color: BLACK }}>
+          NOMBRE DEL PROVEEDOR
+        </Text>
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 92.8, fontFamily: 'Helvetica-Bold', fontSize: 9, color: BLACK }}>
+          CORREO ELECTRONICO
+        </Text>
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 107.3, fontFamily: 'Helvetica-Bold', fontSize: 9, color: BLACK }}>
+          FECHA DE EVALUACIÓN
+        </Text>
 
         {/* Values */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: 255.9,
-            top: yTop(81.6 + 10),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 10,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 255.9, top: 77.6, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
           {proveedor}
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 255.8,
-            top: yTop(96.8 + 9),
-            fontFamily: 'Helvetica',
-            fontSize: 9,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 255.8, top: 92.8, fontFamily: 'Helvetica', fontSize: 9, color: BLACK }}>
           {correo}
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 374.4,
-            top: yTop(105.6 + 10),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 10,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 374.4, top: 106.6, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
           {fecha}
         </Text>
 
         {/* Info band vertical separators */}
         {[44.0, 253.63, 542.48].map((x, i) => (
-          <View
-            key={`info-sep-${i}`}
-            style={{
-              position: 'absolute',
-              left: x - 0.5,
-              top: yTop(117.9),
-              width: 1.5,
-              height: 43.6,
-              backgroundColor: BLACK,
-            }}
-          />
+          <View key={`info-sep-${i}`} style={{ position: 'absolute', left: x - 0.5, top: 74.3, width: 1.5, height: 43.6, backgroundColor: BLACK }} />
         ))}
 
-        {/* ============== 3. SISTEMA DE PUNTUACIÓN (y=132.6) ============== */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(132.6 + 9),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 9,
-            color: BLACK,
-          }}
-        >
+        {/* ============== 3. SISTEMA DE PUNTUACIÓN (y=129.6) ============== */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 129.6, fontFamily: 'Helvetica-Bold', fontSize: 9, color: BLACK }}>
           SISTEMA DE PUNTUACIÓN
         </Text>
-        <Text style={scoreLabelStyle(255.7, 132.4)}>Malo=1</Text>
-        <Text style={scoreLabelStyle(315.8, 132.4)}>Regular=2</Text>
-        <Text style={scoreLabelStyle(364.5, 132.4)}>Bien=3</Text>
-        <Text style={scoreLabelStyle(413.4, 132.4)}>Excelente=4</Text>
+        <Text style={{ position: 'absolute', left: 255.7, top: 130.4, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>Malo=1</Text>
+        <Text style={{ position: 'absolute', left: 315.8, top: 130.4, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>Regular=2</Text>
+        <Text style={{ position: 'absolute', left: 364.5, top: 130.4, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>Bien=3</Text>
+        <Text style={{ position: 'absolute', left: 413.4, top: 130.4, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>Excelente=4</Text>
 
         {/* ============== 4. TABLE HEADER (y=145 to y=160.3) ============== */}
-        <View
-          style={{
-            position: 'absolute',
-            left: M_LEFT,
-            top: yTop(160.3),
-            width: CONTENT_W,
-            height: 15.3,
-            backgroundColor: LIGHT_BLUE,
-          }}
-        />
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(150 + 10),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 10,
-            color: BLACK,
-          }}
-        >
+        <View style={{ position: 'absolute', left: M_LEFT, top: 145, width: CONTENT_W, height: 15.3, backgroundColor: LIGHT_BLUE }} />
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
           Criterio a evaluar
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 388.5,
-            top: yTop(150 + 10),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 10,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 388.5, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
           Calificación
         </Text>
         {/* Table header vertical separators */}
         {[44.0, 362.45, 460.08].map((x, i) => (
-          <View
-            key={`th-sep-${i}`}
-            style={{
-              position: 'absolute',
-              left: x - 0.5,
-              top: yTop(161.2),
-              width: 1.5,
-              height: 17.2,
-              backgroundColor: BLACK,
-            }}
-          />
+          <View key={`th-sep-${i}`} style={{ position: 'absolute', left: x - 0.5, top: 144, width: 1.5, height: 17.2, backgroundColor: BLACK }} />
         ))}
 
-        {/* ============== 5. CRITERIA ROWS ============== */}
+        {/* ============== 5. CRITERIA ROWS (y=163.5 to y=304) ============== */}
         {criteria.map((label, i) => {
-          const yBottom = 168 - i * 14.5
+          const y = 163.5 + i * 14.5
           const score = scores[i] || 0
           return (
             <View key={`crit-${i}`}>
-              <Text
-                style={{
-                  position: 'absolute',
-                  left: M_LEFT + 1.7,
-                  top: yTop(yBottom + 9),
-                  fontFamily: 'Helvetica',
-                  fontSize: 9,
-                  color: BLACK,
-                }}
-              >
+              <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: y, fontFamily: 'Helvetica', fontSize: 9, color: BLACK }}>
                 {label}
               </Text>
               <Text
                 style={{
                   position: 'absolute',
                   left: 380,
-                  top: yTop(yBottom + 10),
+                  top: y - 0.5,
                   width: 35,
                   textAlign: 'right',
                   fontFamily: 'Helvetica-Bold',
@@ -453,40 +317,21 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           )
         })}
 
-        {/* Table vertical borders */}
-        {[43.5, 362.45, 459.58].map((x, i) => (
-          <View
-            key={`tb-sep-${i}`}
-            style={{
-              position: 'absolute',
-              left: x,
-              top: yTop(305),
-              width: 1.5,
-              height: 144,
-              backgroundColor: BLACK,
-            }}
-          />
-        ))}
+        {/* Table vertical borders (left, middle, right) - span full table height */}
+        <View style={{ position: 'absolute', left: 43.5, top: 161, width: 1.5, height: 145, backgroundColor: BLACK }} />
+        <View style={{ position: 'absolute', left: 362.45, top: 161, width: 1.5, height: 145, backgroundColor: BLACK }} />
+        <View style={{ position: 'absolute', left: 459.58, top: 161, width: 1.5, height: 145, backgroundColor: BLACK }} />
 
-        {/* ============== 6. TOTALS ============== */}
-        {/* Total obtained */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(309.3 + 9),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 9,
-            color: BLACK,
-          }}
-        >
+        {/* ============== 6. TOTALS (y=305 to y=360) ============== */}
+        {/* Total obtained (y=309.3) */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 309.3, fontFamily: 'Helvetica-Bold', fontSize: 9, color: BLACK }}>
           Total de puntos obtenidos
         </Text>
         <Text
           style={{
             position: 'absolute',
             left: 380,
-            top: yTop(309.3 + 11),
+            top: 307.5,
             width: 35,
             textAlign: 'right',
             fontFamily: 'Helvetica-Bold',
@@ -496,24 +341,16 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         >
           {String(ev.total)}
         </Text>
-        {/* Total possible */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(323.8 + 9),
-            fontFamily: 'Helvetica',
-            fontSize: 9,
-            color: BLACK,
-          }}
-        >
+
+        {/* Total possible (y=323.8) */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 323.8, fontFamily: 'Helvetica', fontSize: 9, color: BLACK }}>
           Total de puntos posibles
         </Text>
         <Text
           style={{
             position: 'absolute',
             left: 380,
-            top: yTop(323.8 + 10),
+            top: 323,
             width: 35,
             textAlign: 'right',
             fontFamily: 'Helvetica',
@@ -523,25 +360,17 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         >
           40
         </Text>
-        {/* Evaluation label + score */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(347.8 + 10),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 10,
-            color: BLACK,
-          }}
-        >
+
+        {/* Evaluation label + score (y=347.8) */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 347.8, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
           Evaluación del proveedor=
         </Text>
         <Text
           style={{
             position: 'absolute',
-            left: 270,
-            top: yTop(347.8 + 14),
-            width: 85,
+            left: 280,
+            top: 344.5,
+            width: 75,
             textAlign: 'right',
             fontFamily: 'Helvetica-Bold',
             fontSize: 14,
@@ -551,12 +380,12 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           {calificacion.toFixed(1)}
         </Text>
 
-        {/* Classification box (right) */}
+        {/* Classification box (right side, y=342 to y=361) */}
         <View
           style={{
             position: 'absolute',
             left: 425.7,
-            top: yTop(360.93),
+            top: 342,
             width: 117.13,
             height: 18.9,
             backgroundColor: clsColor,
@@ -566,7 +395,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           style={{
             position: 'absolute',
             left: 425.7,
-            top: yTop(360.93 + 5),
+            top: 347,
             width: 117.13,
             textAlign: 'center',
             fontFamily: 'Helvetica-Bold',
@@ -577,32 +406,23 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           {clasificacion}
         </Text>
         {/* Right border next to totals */}
-        <View
-          style={{
-            position: 'absolute',
-            left: 541.98,
-            top: yTop(361.83),
-            width: 2,
-            height: 18.8,
-            backgroundColor: BLACK,
-          }}
-        />
+        <View style={{ position: 'absolute', left: 541.98, top: 343, width: 2, height: 18.8, backgroundColor: BLACK }} />
 
-        {/* ============== 7. CLASSIFICATION LEGEND ============== */}
+        {/* ============== 7. CLASSIFICATION LEGEND (y=375 to y=434) ============== */}
         {[
           { lbl: 'EXCELENTE', rng: '91 - 100', bg: DARK_GREEN, fg: WHITE },
           { lbl: 'BUENO', rng: '71 - 90', bg: LIGHT_GREEN, fg: BLACK },
           { lbl: 'REGULAR', rng: '51 - 70', bg: ORANGE, fg: BLACK },
           { lbl: 'MALO', rng: '0 - 50', bg: RED, fg: WHITE },
         ].map((row, i) => {
-          const yBottom = 375.3 + (3 - i) * 14.55
+          const y = 375.3 + i * 14.55
           return (
             <View key={`leg-${i}`}>
               <View
                 style={{
                   position: 'absolute',
                   left: M_LEFT,
-                  top: yTop(yBottom + 14.55),
+                  top: y,
                   width: 48.9,
                   height: 14.55,
                   backgroundColor: row.bg,
@@ -612,7 +432,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
                 style={{
                   position: 'absolute',
                   left: M_LEFT - 2,
-                  top: yTop(yBottom + 14.55) + 4.5,
+                  top: y + 4,
                   width: 52.9,
                   textAlign: 'center',
                   fontFamily: 'Helvetica-Bold',
@@ -626,7 +446,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
                 style={{
                   position: 'absolute',
                   left: 95.2,
-                  top: yTop(yBottom + 14.55) + 5,
+                  top: y + 4.5,
                   fontFamily: 'Helvetica-Bold',
                   fontSize: 11,
                   color: BLACK,
@@ -638,147 +458,61 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           )
         })}
         {/* Legend left border */}
-        <View
-          style={{
-            position: 'absolute',
-            left: 43.5,
-            top: yTop(433.79),
-            width: 1.5,
-            height: 58.97,
-            backgroundColor: BLACK,
-          }}
-        />
+        <View style={{ position: 'absolute', left: 43.5, top: 374.8, width: 1.5, height: 59, backgroundColor: BLACK }} />
 
-        {/* ============== 8. OBSERVATIONS ============== */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(453.1 + 10),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 10,
-            color: BLACK,
-          }}
-        >
+        {/* ============== 8. OBSERVATIONS (y=451 to y=504) ============== */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 451.1, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
           Observaciones:
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(466.7 + 9),
-            fontFamily: 'Helvetica',
-            fontSize: 9,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 464.7, fontFamily: 'Helvetica', fontSize: 9, color: BLACK }}>
           {(ev.observaciones || '').trim() || 'SIN OBSERVACIONES.'}
         </Text>
-        <View
-          style={{
-            position: 'absolute',
-            left: 43.5,
-            top: yTop(503.6),
-            width: 1.5,
-            height: 41.7,
-            backgroundColor: BLACK,
-          }}
-        />
+        {/* Left border for observations */}
+        <View style={{ position: 'absolute', left: 43.5, top: 461.9, width: 1.5, height: 41.7, backgroundColor: BLACK }} />
 
-        {/* ============== 9. SIGNATURE ROW ============== */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(524.4 + 8),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 8,
-            color: BLACK,
-          }}
-        >
+        {/* ============== 9. SIGNATURE ROW (y=522 to y=570) ============== */}
+        {/* Column labels (y=522.4) */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 522.4, fontFamily: 'Helvetica-Bold', fontSize: 8, color: BLACK }}>
           Nombre del evaluador
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 275.1,
-            top: yTop(524.4 + 8),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 8,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 275.1, top: 522.4, fontFamily: 'Helvetica-Bold', fontSize: 8, color: BLACK }}>
           Firma
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 427.1,
-            top: yTop(524.4 + 8),
-            fontFamily: 'Helvetica-Bold',
-            fontSize: 8,
-            color: BLACK,
-          }}
-        >
+        <Text style={{ position: 'absolute', left: 427.1, top: 522.4, fontFamily: 'Helvetica-Bold', fontSize: 8, color: BLACK }}>
           Cargo
         </Text>
 
-        {/* Signature image (centered in Firma column) */}
+        {/* Signature image (in Firma column, above the underline) */}
         {signatureDataUrl && (
           <PdfImage
             src={signatureDataUrl}
             style={{
               position: 'absolute',
               left: 275,
-              top: yTop(567),
+              top: 535,
               width: 130,
-              height: 40,
+              height: 28,
               objectFit: 'contain',
             }}
           />
         )}
 
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(562.3 + 9),
-            fontFamily: 'Helvetica',
-            fontSize: 9,
-            color: BLACK,
-          }}
-        >
+        {/* Name value (y=560.3) */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 560.3, fontFamily: 'Helvetica', fontSize: 9, color: BLACK }}>
           {ev.evaluador || 'Walter Piñera'}
         </Text>
-        <Text
-          style={{
-            position: 'absolute',
-            left: 431.1,
-            top: yTop(562.3 + 8),
-            fontFamily: 'Helvetica',
-            fontSize: 8,
-            color: BLACK,
-          }}
-        >
+        {/* Cargo value (y=560.9) */}
+        <Text style={{ position: 'absolute', left: 431.1, top: 560.9, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>
           {ev.cargo || 'Ingeniero Calidad y Compras'}
         </Text>
 
-        {/* Signature underlines (drawn with thin Views) */}
-        <View style={{ position: 'absolute', left: M_LEFT, top: yTop(558.3), width: 205, height: 0.5, backgroundColor: BLACK }} />
-        <View style={{ position: 'absolute', left: 270, top: yTop(558.3), width: 140, height: 0.5, backgroundColor: BLACK }} />
-        <View style={{ position: 'absolute', left: 427, top: yTop(558.3), width: M_RIGHT - 427, height: 0.5, backgroundColor: BLACK }} />
+        {/* Signature underlines (y=570) */}
+        <View style={{ position: 'absolute', left: M_LEFT, top: 570, width: 205, height: 0.5, backgroundColor: BLACK }} />
+        <View style={{ position: 'absolute', left: 270, top: 570, width: 140, height: 0.5, backgroundColor: BLACK }} />
+        <View style={{ position: 'absolute', left: 427, top: 570, width: M_RIGHT - 427, height: 0.5, backgroundColor: BLACK }} />
 
-        {/* ============== 10. FOOTER ============== */}
-        <Text
-          style={{
-            position: 'absolute',
-            left: M_LEFT + 1.7,
-            top: yTop(606.6 + 8),
-            fontFamily: 'Helvetica',
-            fontSize: 8,
-            color: GRAY,
-          }}
-        >
+        {/* ============== 10. FOOTER (y=604.6) ============== */}
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 604.6, fontFamily: 'Helvetica', fontSize: 8, color: GRAY }}>
           F-CAL-07 REV01
         </Text>
 
@@ -788,16 +522,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
             size={[PAGE_W, PAGE_H]}
             style={{ margin: 0, padding: 0, position: 'relative' }}
           >
-            <View
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                width: PAGE_W,
-                height: PAGE_H,
-                backgroundColor: WHITE,
-              }}
-            />
+            <View style={{ position: 'absolute', left: 0, top: 0, width: PAGE_W, height: PAGE_H, backgroundColor: WHITE }} />
             <Text
               style={{
                 position: 'absolute',
@@ -842,28 +567,6 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
       </Page>
     </Document>
   )
-}
-
-function infoLabelStyle(x: number, yBottom: number) {
-  return {
-    position: 'absolute' as const,
-    left: x,
-    top: PAGE_H - (yBottom + 9),
-    fontFamily: 'Helvetica-Bold',
-    fontSize: 9,
-    color: BLACK,
-  }
-}
-
-function scoreLabelStyle(x: number, yBottom: number) {
-  return {
-    position: 'absolute' as const,
-    left: x,
-    top: PAGE_H - (yBottom + 8),
-    fontFamily: 'Helvetica',
-    fontSize: 8,
-    color: BLACK,
-  }
 }
 
 function formatDate(s: string): string {
