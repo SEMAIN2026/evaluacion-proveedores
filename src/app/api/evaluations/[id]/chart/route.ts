@@ -1,12 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, type Evaluation, classificationBarColor } from '@/lib/db'
-import sharp from 'sharp'
+import { db, type Evaluation } from '@/lib/db'
+import { Resvg } from '@resvg/resvg-js'
+import { readFile } from 'fs/promises'
+import { join } from 'path'
 
 /**
- * Generates a horizontal bar chart PNG showing all providers' scores,
- * with the requested provider highlighted.
+ * Generates a formal, professional horizontal bar chart PNG showing all
+ * providers' scores, with the current provider highlighted.
  *
- * Width: 1200, dynamic height based on provider count.
+ * Uses @resvg/resvg-js for proper font rendering (sharp/librsvg was rendering
+ * text as boxes/tofu on Vercel's serverless environment).
+ *
+ * Features:
+ *   - SEMAIN logo at top
+ *   - Title + date
+ *   - Horizontal bars sorted by score (highest at top)
+ *   - Provider names fully visible (not truncated)
+ *   - Score + classification on each bar
+ *   - Current provider highlighted with yellow background
+ *   - Classification legend at bottom
+ *   - Compact data table below the chart
  */
 export async function GET(
   req: NextRequest,
@@ -24,7 +37,7 @@ export async function GET(
     calificacion: Number(r.calificacion ?? 0),
     clasificacion: String(r.clasificacion ?? 'MALO'),
     total: Number(r.total ?? 0),
-  })) as Pick<Evaluation, 'id' | 'proveedor' | 'correo' | 'fecha' | 'calificacion' | 'clasificacion' | 'total'>[]
+  }))
 
   if (all.length === 0) {
     return NextResponse.json({ error: 'sin datos' }, { status: 404 })
@@ -35,9 +48,34 @@ export async function GET(
     return NextResponse.json({ error: 'proveedor no encontrado' }, { status: 404 })
   }
 
-  const svg = buildBarChartSVG(all, id)
+  // Load fonts and logo
+  const fontDir = join(process.cwd(), 'public', 'fonts')
+  const fontRegular = await readFile(join(fontDir, 'Carlito-Regular.ttf'))
+  const fontBold = await readFile(join(fontDir, 'Carlito-Bold.ttf'))
+  const logoPath = join(process.cwd(), 'public', 'assets', 'logo.png')
+  let logoBase64: string | null = null
+  try {
+    const logoBuf = await readFile(logoPath)
+    logoBase64 = `data:image/png;base64,${logoBuf.toString('base64')}`
+  } catch {
+    // logo not found - chart will work without it
+  }
 
-  const pngBuffer = await sharp(Buffer.from(svg)).png().toBuffer()
+  const svg = buildChartSVG(all, id, logoBase64)
+
+  const resvg = new Resvg(svg, {
+    fitTo: { mode: 'width', value: 1400 },
+    font: {
+      fontFiles: [
+        { name: 'Carlito', data: fontRegular, weight: 400 },
+        { name: 'Carlito', data: fontBold, weight: 700 },
+      ],
+      defaultFontFamily: 'Carlito',
+      loadSystemFonts: false,
+    },
+  })
+
+  const pngBuffer = resvg.render().asPng()
 
   return new NextResponse(pngBuffer as unknown as BodyInit, {
     status: 200,
@@ -58,98 +96,188 @@ function escapeXml(s: string): string {
     .replace(/'/g, '&apos;')
 }
 
-function buildBarChartSVG(
-  all: Pick<Evaluation, 'id' | 'proveedor' | 'calificacion' | 'clasificacion'>[],
-  highlightId: string
+function truncate(s: string, maxLen: number): string {
+  if (s.length <= maxLen) return s
+  return s.slice(0, maxLen - 1) + '…'
+}
+
+function classificationColor(c: string): string {
+  switch (c) {
+    case 'EXCELENTE': return '#10b981'
+    case 'BUENO': return '#0ea5e9'
+    case 'REGULAR': return '#f59e0b'
+    case 'MALO': return '#f43f5e'
+    default: return '#64748b'
+  }
+}
+
+function buildChartSVG(
+  all: Array<{ id: string; proveedor: string; correo: string | null; fecha: string; calificacion: number; clasificacion: string; total: number }>,
+  highlightId: string,
+  logoBase64: string | null
 ): string {
-  // Sort by calificacion DESC so #1 is at the top
   const sorted = [...all].sort((a, b) => b.calificacion - a.calificacion)
   const n = sorted.length
   const targetIdx = sorted.findIndex((e) => e.id === highlightId)
+  const target = sorted[targetIdx]
 
-  // Layout
-  const W = 1200
-  const padL = 280 // room for provider names
-  const padR = 140 // room for score + classification
-  const padT = 110 // header
-  const padB = 60
-  const rowH = n <= 8 ? 56 : n <= 15 ? 42 : 32
-  const gap = n <= 8 ? 14 : n <= 15 ? 10 : 6
-  const chartW = W - padL - padR
-  const chartH = n * (rowH + gap)
-  const H = chartH + padT + padB
+  // Layout dimensions
+  const W = 1400
+  const padL = 50
+  const padR = 50
+  const padTop = 130 // header with logo + title
+  const padBottom = 200 // table + legend
+  const nameColW = 320 // provider name column
+  const barStart = padL + nameColW + 20
+  const barEnd = W - padR - 120 // leave room for score + classification text
+  const chartW = barEnd - barStart
 
-  const maxScore = 100
+  // Row dimensions
+  const rowH = n <= 6 ? 48 : n <= 10 ? 40 : n <= 15 ? 32 : 26
+  const rowGap = n <= 6 ? 12 : n <= 10 ? 8 : 6
+  const chartH = n * (rowH + rowGap)
+  const tableTop = padTop + chartH + 40
+  const H = tableTop + 140 + 40
 
-  // Header band
-  const header = `
-    <rect x="0" y="0" width="${W}" height="${padT - 20}" fill="#0f172a"/>
-    <text x="40" y="48" font-family="Inter, Arial, sans-serif" font-size="28" font-weight="700" fill="#ffffff">
-      Comparativo de Proveedores
+  // Header
+  let header = `
+    <rect x="0" y="0" width="${W}" height="${padTop - 20}" fill="#0f172a"/>
+  `
+  if (logoBase64) {
+    header += `<image href="${logoBase64}" x="${padL}" y="25" height="60" preserveAspectRatio="xMidYMid meet"/>`
+  }
+  header += `
+    <text x="${W / 2}" y="50" text-anchor="middle" font-family="Carlito" font-size="26" font-weight="700" fill="#ffffff">
+      Comparativo de Evaluación de Proveedores
     </text>
-    <text x="40" y="78" font-family="Inter, Arial, sans-serif" font-size="15" fill="#cbd5e1">
-      Posición de ${escapeXml(sorted[targetIdx]?.proveedor ?? '')} frente a ${n - 1} proveedor${n - 1 === 1 ? '' : 'es'} evaluado${n - 1 === 1 ? '' : 's'}
+    <text x="${W / 2}" y="78" text-anchor="middle" font-family="Carlito" font-size="14" fill="#cbd5e1">
+      Posición de ${escapeXml(target?.proveedor ?? '')} frente a ${n - 1} proveedor${n - 1 === 1 ? '' : 'es'} evaluado${n - 1 === 1 ? '' : 's'}
     </text>
-    <text x="${W - 40}" y="48" text-anchor="end" font-family="Inter, Arial, sans-serif" font-size="14" fill="#94a3b8">
-      Generado: ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+    <text x="${W - padR}" y="50" text-anchor="end" font-family="Carlito" font-size="13" fill="#94a3b8">
+      ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
     </text>
-    <text x="${W - 40}" y="72" text-anchor="end" font-family="Inter, Arial, sans-serif" font-size="13" fill="#64748b">
+    <text x="${W - padR}" y="72" text-anchor="end" font-family="Carlito" font-size="12" fill="#64748b">
       Escala 0 - 100
     </text>
   `
 
-  // Reference vertical lines at 25/50/75/100
-  const refLines = [25, 50, 75, 100]
-    .map((v) => {
-      const x = padL + (v / maxScore) * chartW
-      return `
-        <line x1="${x}" y1="${padT - 10}" x2="${x}" y2="${H - padB + 4}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 4"/>
-        <text x="${x}" y="${H - padB + 24}" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="11" fill="#94a3b8">${v}</text>
-      `
-    })
-    .join('')
+  // Reference vertical gridlines
+  let gridlines = ''
+  for (const v of [0, 25, 50, 75, 100]) {
+    const x = barStart + (v / 100) * chartW
+    gridlines += `<line x1="${x}" y1="${padTop - 10}" x2="${x}" y2="${padTop + chartH + 5}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="3 4"/>`
+    gridlines += `<text x="${x}" y="${padTop + chartH + 22}" text-anchor="middle" font-family="Carlito" font-size="11" fill="#94a3b8">${v}</text>`
+  }
+
+  // Classification zone backgrounds (very subtle)
+  let zones = ''
+  const zones_data = [
+    { from: 91, to: 100, color: '#10b981', label: 'EXCELENTE' },
+    { from: 71, to: 91, color: '#0ea5e9', label: 'BUENO' },
+    { from: 51, to: 71, color: '#f59e0b', label: 'REGULAR' },
+    { from: 0, to: 51, color: '#f43f5e', label: 'MALO' },
+  ]
+  for (const z of zones_data) {
+    const x1 = barStart + (z.from / 100) * chartW
+    const x2 = barStart + (z.to / 100) * chartW
+    zones += `<rect x="${x1}" y="${padTop - 10}" width="${x2 - x1}" height="${chartH + 15}" fill="${z.color}" opacity="0.04"/>`
+  }
 
   // Bars
-  const bars = sorted
-    .map((e, i) => {
-      const y = padT + i * (rowH + gap)
-      const isTarget = e.id === highlightId
-      const w = Math.max(2, (e.calificacion / maxScore) * chartW)
-      const barColor = classificationBarColor(e.clasificacion)
-      const labelColor = isTarget ? '#0f172a' : '#334155'
-      const labelWeight = isTarget ? '700' : '500'
-      const rankText = `#${i + 1}`
-      const providerLabel = e.proveedor.length > 32 ? e.proveedor.slice(0, 31) + '…' : e.proveedor
-      const scoreText = e.calificacion.toFixed(1)
-      const rankBg = isTarget ? '#fde68a' : '#f1f5f9'
-      const rankFg = isTarget ? '#92400e' : '#64748b'
+  let bars = ''
+  sorted.forEach((e, i) => {
+    const y = padTop + i * (rowH + rowGap)
+    const isTarget = e.id === highlightId
+    const w = Math.max(2, (e.calificacion / 100) * chartW)
+    const barColor = classificationColor(e.clasificacion)
+    const providerLabel = truncate(e.proveedor, 42)
+    const scoreText = e.calificacion.toFixed(1)
 
-      // Background highlight strip for the target row
-      const rowBg = isTarget
-        ? `<rect x="20" y="${y - 4}" width="${W - 40}" height="${rowH + 8}" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>`
-        : ''
+    // Row background highlight for target
+    if (isTarget) {
+      bars += `<rect x="${padL - 10}" y="${y - 4}" width="${W - padL - padR + 20}" height="${rowH + 8}" rx="6" fill="#fef3c7" stroke="#fcd34d" stroke-width="1.5"/>`
+    } else if (i % 2 === 0) {
+      bars += `<rect x="${padL - 5}" y="${y - 2}" width="${W - padL - padR + 10}" height="${rowH + 4}" fill="#f8fafc"/>`
+    }
 
-      return `
-        ${rowBg}
-        <text x="40" y="${y + rowH / 2 + 5}" font-family="Inter, Arial, sans-serif" font-size="12" font-weight="700" fill="${rankFg}">${rankText}</text>
-        <rect x="68" y="${y + rowH / 2 - 8}" width="22" height="16" rx="3" fill="${rankBg}"/>
-        <text x="79" y="${y + rowH / 2 + 4}" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="10" font-weight="700" fill="${rankFg}">${i + 1}</text>
-        <text x="98" y="${y + rowH / 2 + 5}" font-family="Inter, Arial, sans-serif" font-size="${isTarget ? 14 : 13}" font-weight="${labelWeight}" fill="${labelColor}">${escapeXml(providerLabel)}</text>
-        <rect x="${padL}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="${barColor}" opacity="${isTarget ? 1 : 0.78}"/>
-        ${isTarget ? `<rect x="${padL}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="none" stroke="#0f172a" stroke-width="2"/>` : ''}
-        <text x="${padL + w + 8}" y="${y + rowH / 2 + 5}" font-family="Inter, Arial, sans-serif" font-size="${isTarget ? 14 : 12}" font-weight="700" fill="${isTarget ? '#0f172a' : '#475569'}">${scoreText}</text>
-        <text x="${padL + chartW + 10}" y="${y + rowH / 2 + 5}" font-family="Inter, Arial, sans-serif" font-size="11" font-weight="600" fill="${barColor}">${e.clasificacion}</text>
-      `
-    })
-    .join('')
+    // Rank number
+    bars += `<text x="${padL}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="13" font-weight="700" fill="#64748b">#${i + 1}</text>`
+
+    // Provider name
+    bars += `<text x="${padL + 35}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="${isTarget ? 700 : 500}" fill="${isTarget ? '#0f172a' : '#334155'}">${escapeXml(providerLabel)}</text>`
+
+    // Bar
+    bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="${barColor}" opacity="${isTarget ? 1 : 0.75}"/>`
+    if (isTarget) {
+      bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="none" stroke="#0f172a" stroke-width="2"/>`
+    }
+
+    // Score text (after the bar)
+    bars += `<text x="${barStart + w + 8}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="700" fill="${isTarget ? '#0f172a' : '#475569'}">${scoreText}</text>`
+
+    // Classification text (at the right)
+    bars += `<text x="${barEnd + 15}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="12" font-weight="600" fill="${barColor}">${e.clasificacion}</text>`
+  })
+
+  // Legend at bottom of chart
+  const legendY = padTop + chartH + 40
+  let legend = `<text x="${padL}" y="${legendY}" font-family="Carlito" font-size="12" font-weight="700" fill="#475569">Clasificación:</text>`
+  const legendItems = [
+    { label: 'EXCELENTE (91-100)', color: '#10b981' },
+    { label: 'BUENO (71-90)', color: '#0ea5e9' },
+    { label: 'REGULAR (51-70)', color: '#f59e0b' },
+    { label: 'MALO (0-50)', color: '#f43f5e' },
+  ]
+  legendItems.forEach((item, i) => {
+    const x = padL + 110 + i * 200
+    legend += `<rect x="${x}" y="${legendY - 10}" width="14" height="14" rx="2" fill="${item.color}"/>`
+    legend += `<text x="${x + 20}" y="${legendY + 1}" font-family="Carlito" font-size="11" fill="#475569">${item.label}</text>`
+  })
+
+  // Compact data table below
+  const tableY = legendY + 30
+  const colX = {
+    rank: padL,
+    name: padL + 40,
+    score: padL + 40 + 360,
+    class: padL + 40 + 360 + 100,
+    date: padL + 40 + 360 + 100 + 130,
+  }
+  const colWidths = {
+    rank: 35,
+    name: 360,
+    score: 100,
+    class: 130,
+    date: 120,
+  }
+  let table = `
+    <rect x="${padL}" y="${tableY}" width="${W - padL - padR}" height="32" fill="#0f172a" rx="4"/>
+    <text x="${colX.rank + colWidths.rank / 2}" y="${tableY + 21}" text-anchor="middle" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">#</text>
+    <text x="${colX.name + 10}" y="${tableY + 21}" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">PROVEEDOR</text>
+    <text x="${colX.score + colWidths.score / 2}" y="${tableY + 21}" text-anchor="middle" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">CALIFICACIÓN</text>
+    <text x="${colX.class + 10}" y="${tableY + 21}" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">CLASIFICACIÓN</text>
+    <text x="${colX.date + 10}" y="${tableY + 21}" font-family="Carlito" font-size="12" font-weight="700" fill="#ffffff">FECHA</text>
+  `
+  sorted.forEach((e, i) => {
+    const y = tableY + 32 + i * 24
+    const isTarget = e.id === highlightId
+    const bgColor = isTarget ? '#fef3c7' : (i % 2 === 0 ? '#f1f5f9' : '#ffffff')
+    table += `<rect x="${padL}" y="${y}" width="${W - padL - padR}" height="24" fill="${bgColor}"/>`
+    table += `<text x="${colX.rank + colWidths.rank / 2}" y="${y + 16}" text-anchor="middle" font-family="Carlito" font-size="11" font-weight="700" fill="#64748b">${i + 1}</text>`
+    table += `<text x="${colX.name + 10}" y="${y + 16}" font-family="Carlito" font-size="11" font-weight="${isTarget ? 700 : 400}" fill="${isTarget ? '#0f172a' : '#334155'}">${escapeXml(truncate(e.proveedor, 45))}</text>`
+    table += `<text x="${colX.score + colWidths.score / 2}" y="${y + 16}" text-anchor="middle" font-family="Carlito" font-size="11" font-weight="700" fill="#0f172a">${e.calificacion.toFixed(1)}</text>`
+    table += `<text x="${colX.class + 10}" y="${y + 16}" font-family="Carlito" font-size="11" font-weight="600" fill="${classificationColor(e.clasificacion)}">${e.clasificacion}</text>`
+    table += `<text x="${colX.date + 10}" y="${y + 16}" font-family="Carlito" font-size="11" fill="#64748b">${formatDate(e.fecha)}</text>`
+  })
 
   // Footer note
+  const footerY = tableY + 32 + sorted.length * 24 + 20
   const footer = `
-    <text x="40" y="${H - 18}" font-family="Inter, Arial, sans-serif" font-size="11" fill="#94a3b8">
-      Clasificación: EXCELENTE (91-100) · BUENO (71-90) · REGULAR (51-70) · MALO (0-50)
+    <text x="${padL}" y="${footerY}" font-family="Carlito" font-size="11" fill="#94a3b8">
+      El proveedor evaluado aparece resaltado en amarillo. La gráfica muestra la posición comparativa entre todos los proveedores evaluados.
     </text>
-    <text x="${W - 40}" y="${H - 18}" text-anchor="end" font-family="Inter, Arial, sans-serif" font-size="11" fill="#94a3b8">
-      Tu proveedor aparece resaltado en amarillo
+    <text x="${W - padR}" y="${footerY}" text-anchor="end" font-family="Carlito" font-size="11" fill="#94a3b8">
+      SEMAIN · F-CAL-07 REV01
     </text>
   `
 
@@ -157,9 +285,21 @@ function buildBarChartSVG(
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>
   ${header}
-  <line x1="20" y1="${padT - 20}" x2="${W - 20}" y2="${padT - 20}" stroke="#e2e8f0" stroke-width="1"/>
-  ${refLines}
+  <line x1="0" y1="${padTop - 20}" x2="${W}" y2="${padTop - 20}" stroke="#e2e8f0" stroke-width="1"/>
+  ${zones}
+  ${gridlines}
   ${bars}
+  ${legend}
+  ${table}
   ${footer}
 </svg>`
+}
+
+function formatDate(s: string): string {
+  if (!s) return ''
+  if (s.includes('-')) {
+    const [y, m, d] = s.slice(0, 10).split('-')
+    if (y && m && d) return `${d}/${m}/${y}`
+  }
+  return s
 }

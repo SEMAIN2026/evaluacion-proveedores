@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import {
   Dialog,
   DialogContent,
@@ -15,7 +15,10 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, Mail, ExternalLink, Copy, Download, Send, CheckCircle2, Mailbox, FileText, Image as ImageIcon, FileCode, Zap } from 'lucide-react'
+import {
+  Loader2, Mail, ExternalLink, Copy, Download, Send, CheckCircle2,
+  Mailbox, AlertCircle, ServerCog, FolderOpen, FileText, Image as ImageIcon,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Evaluation } from '@/lib/evaluations'
 
@@ -27,6 +30,8 @@ interface Props {
   cargo: string
 }
 
+const TRAY_URL = 'http://127.0.0.1:8765'
+
 export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
@@ -35,6 +40,8 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [trayStatus, setTrayStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const [trayResult, setTrayResult] = useState<string | null>(null)
 
   useEffect(() => {
     if (ev) {
@@ -43,14 +50,34 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
       setBody(buildDefaultBody(ev, evaluador, cargo))
       setSent(false)
       setError(null)
+      setTrayResult(null)
     }
   }, [ev, evaluador, cargo])
 
+  // Check if the Python tray app is running (localhost:8765)
+  const checkTray = useCallback(async () => {
+    setTrayStatus('checking')
+    try {
+      const res = await fetch(`${TRAY_URL}/status`, { method: 'GET', mode: 'cors' })
+      if (res.ok) {
+        setTrayStatus('online')
+      } else {
+        setTrayStatus('offline')
+      }
+    } catch {
+      setTrayStatus('offline')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (open) {
+      checkTray()
+    }
+  }, [open, checkTray])
+
   if (!ev) return null
 
-  // ----- Option A: mailto: link (opens user's email client) -----
-  // The PDF and chart PNG must be downloaded separately because mailto: doesn't
-  // support attachments. We make this crystal clear in the UI.
+  const hasEmail = !!ev.correo
   const mailtoHref = buildMailto(to, subject, body)
 
   const handleCopyBody = async () => {
@@ -61,29 +88,42 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
     } catch {}
   }
 
-  // Trigger 3 sequential downloads (PDF + chart PNG + Outlook VBScript)
-  // Browsers may ask for permission the first time ("Allow this site to download
-  // multiple files?"). After the user accepts once, future clicks go smoothly.
-  const downloadAllForOutlook = () => {
-    if (!ev) return
-    const urls = [
-      `/api/evaluations/${ev.id}/pdf`,
-      `/api/evaluations/${ev.id}/chart`,
-      `/api/evaluations/${ev.id}/outlook-script`,
-    ]
-    urls.forEach((u, i) => {
-      setTimeout(() => {
-        const a = document.createElement('a')
-        a.href = u
-        a.download = ''
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-      }, i * 600)
-    })
+  // ----- Option A: Python tray app (the recommended way) -----
+  const handlePrepareInTray = async () => {
+    if (!hasEmail) {
+      setError('Este proveedor no tiene correo electrónico')
+      return
+    }
+    setSending(true)
+    setError(null)
+    setTrayResult(null)
+    try {
+      const res = await fetch(`${TRAY_URL}/prepare-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          providerName: ev.proveedor,
+          email: to,
+          subject,
+          body,
+          pdfUrl: `${window.location.origin}/api/evaluations/${ev.id}/pdf`,
+          chartUrl: `${window.location.origin}/api/evaluations/${ev.id}/chart`,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        throw new Error(json.error || 'Error al preparar el correo')
+      }
+      setTrayResult(json.savedTo || 'Archivos guardados y Outlook abierto')
+      setSent(true)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error de conexión con la app local')
+    } finally {
+      setSending(false)
+    }
   }
 
-  // ----- Option B: server-side SMTP send -----
+  // ----- Option B: SMTP server-side send -----
   const handleSendSmtp = async () => {
     setSending(true)
     setError(null)
@@ -93,11 +133,8 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          to,
-          subject,
-          body,
-          attachPdf: true,
-          attachChart: true,
+          to, subject, body,
+          attachPdf: true, attachChart: true,
         }),
       })
       const json = await res.json()
@@ -122,8 +159,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
           </DialogTitle>
           <DialogDescription>
             El correo incluirá el <strong>PDF de evaluación</strong> y la <strong>gráfica
-            comparativa</strong> con todos los proveedores (sin la tabla de detalle, solo la
-            gráfica para que conozcan su posición).
+            comparativa</strong> con todos los proveedores.
           </DialogDescription>
         </DialogHeader>
 
@@ -134,11 +170,11 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
           <Stat label="Fecha" value={formatDate(ev.fecha)} />
         </div>
 
-        <Tabs defaultValue="outlook" className="w-full">
+        <Tabs defaultValue="tray" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="outlook">
+            <TabsTrigger value="tray">
               <Mailbox className="w-4 h-4 mr-2" />
-              Outlook automático
+              Outlook (app local)
             </TabsTrigger>
             <TabsTrigger value="mailto">
               <ExternalLink className="w-4 h-4 mr-2" />
@@ -146,113 +182,193 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
             </TabsTrigger>
             <TabsTrigger value="smtp">
               <Send className="w-4 h-4 mr-2" />
-              Enviar directo (SMTP)
+              Enviar directo
             </TabsTrigger>
           </TabsList>
 
-          {/* ---------- Option 0: Outlook VBScript (the easy way) ---------- */}
-          <TabsContent value="outlook" className="space-y-4 mt-3">
-            <div className="rounded-md bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-900">
-              <p className="font-semibold mb-2 flex items-center gap-2">
-                <Zap className="w-4 h-4" />
-                La forma más rápida (recomendada para Outlook en Windows)
-              </p>
-              <p className="text-[13px] mb-2">
-                Descarga los 3 archivos (PDF + gráfica + script de Outlook) en tu carpeta
-                de descargas. Luego <strong>haz doble clic en el script</strong> y se abre
-                Outlook con el correo listo: destinatario, asunto, mensaje, PDF y gráfica
-                adjuntos. Solo presionas <strong>Enviar</strong>.
-              </p>
-              <p className="text-[12px] text-emerald-700">
-                Los navegadores no permiten adjuntar archivos automáticamente a un correo
-                por seguridad. El script usa Outlook de tu computadora para hacerlo.
-              </p>
-            </div>
+          {/* ---------- Option A: Python Tray App ---------- */}
+          <TabsContent value="tray" className="space-y-3 mt-3">
+            {trayStatus === 'checking' && (
+              <div className="flex items-center gap-2 text-sm text-slate-500 p-3 bg-slate-50 rounded-md">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Verificando si la app local está corriendo...
+              </div>
+            )}
 
-            {/* One-click "download all" button */}
-            <Button
-              onClick={downloadAllForOutlook}
-              size="lg"
-              className="w-full bg-emerald-600 hover:bg-emerald-700 h-14 text-base"
-            >
-              <Download className="w-5 h-5 mr-2" />
-              Descargar todo (PDF + gráfica + script Outlook)
-            </Button>
+            {trayStatus === 'online' && (
+              <div className="rounded-md bg-emerald-50 border border-emerald-200 p-4 text-sm text-emerald-900">
+                <p className="font-semibold mb-2 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4" />
+                  App local conectada — Outlook disponible
+                </p>
+                <p className="text-[13px] mb-3">
+                  Al pulsar el botón, la app descarga el PDF y la gráfica, los guarda
+                  en tu carpeta de evaluaciones por año y mes, y abre Outlook con
+                  todo listo para enviar.
+                </p>
+                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-100 rounded p-2">
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  Se guardará en: C:\Users\Equipo 39\Desktop\WALTER\ALMACEN\EVALUACION DE PROVEDORES\<strong>{new Date().getFullYear()}</strong>\<strong>{getMonthName()}</strong>\
+                </div>
+              </div>
+            )}
 
-            {/* Show individual download buttons too */}
-            <details className="text-sm">
-              <summary className="cursor-pointer text-slate-600 hover:text-slate-900 select-none">
-                ¿O descargar uno por uno?
-              </summary>
-              <div className="flex flex-wrap gap-2 pt-3">
-                <Button asChild size="sm" variant="outline">
-                  <a href={`/api/evaluations/${ev.id}/pdf`} target="_blank" rel="noopener noreferrer" download>
-                    <FileText className="w-4 h-4 mr-1.5" />
-                    PDF
-                  </a>
-                </Button>
-                <Button asChild size="sm" variant="outline">
-                  <a href={`/api/evaluations/${ev.id}/chart`} target="_blank" rel="noopener noreferrer" download>
-                    <ImageIcon className="w-4 h-4 mr-1.5" />
-                    Gráfica
-                  </a>
-                </Button>
-                <Button asChild size="sm" variant="outline">
-                  <a href={`/api/evaluations/${ev.id}/outlook-script`} download>
-                    <FileCode className="w-4 h-4 mr-1.5" />
-                    Script Outlook (.vbs)
-                  </a>
+            {trayStatus === 'offline' && (
+              <div className="rounded-md bg-amber-50 border border-amber-200 p-4 text-sm text-amber-900">
+                <p className="font-semibold mb-2 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4" />
+                  La app local no está corriendo
+                </p>
+                <p className="text-[13px] mb-3">
+                  Descarga la app de SEMAIN, instálala (una sola vez) y ejecútala.
+                  Aparecerá un icono verde con "S" en la bandeja del sistema. Luego
+                  vuelve a esta página y pulsa "Reintentar".
+                </p>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  <Button asChild size="sm" variant="default">
+                    <a href="/downloads/semain_tray.py" download>
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      1. semain_tray.py
+                    </a>
+                  </Button>
+                  <Button asChild size="sm" variant="default">
+                    <a href="/downloads/instalar.bat" download>
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      2. instalar.bat
+                    </a>
+                  </Button>
+                  <Button asChild size="sm" variant="default">
+                    <a href="/downloads/iniciar.bat" download>
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      3. iniciar.bat
+                    </a>
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <a href="/downloads/LEEME.md" target="_blank" rel="noopener noreferrer">
+                      Instrucciones
+                    </a>
+                  </Button>
+                </div>
+                <ol className="text-xs text-amber-800 space-y-1 list-decimal list-inside">
+                  <li>Descarga los 3 archivos y ponlos en una carpeta (ej. <code>C:\SEMAIN\</code>)</li>
+                  <li>Doble clic en <code>instalar.bat</code> (instala dependencias, una sola vez)</li>
+                  <li>Doble clic en <code>iniciar.bat</code> (arranca la app, verás el icono verde)</li>
+                  <li>Vuelve aquí y pulsa "Reintentar"</li>
+                </ol>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={checkTray}
+                  className="mt-3"
+                >
+                  <ServerCog className="w-3.5 h-3.5 mr-1.5" />
+                  Reintentar conexión
                 </Button>
               </div>
-            </details>
+            )}
 
-            <ol className="text-sm text-slate-700 space-y-1.5 list-decimal list-inside bg-slate-50 border border-slate-200 rounded-md p-4">
-              <li>Pulsa el botón verde de arriba. Se descargan 3 archivos en tu carpeta de Descargas.</li>
-              <li>Si tu navegador pregunta &ldquo;¿Descargar varios archivos?&rdquo;, di que <strong>sí</strong>.</li>
-              <li>Abre tu carpeta de Descargas.</li>
-              <li>Haz <strong>doble clic</strong> en el archivo <code className="bg-slate-200 px-1 rounded">Preparar-correo-{ev.proveedor.replace(/\s+/g, '_').slice(0, 30)}.vbs</code></li>
-              <li>Outlook se abre con TODO listo. Solo presiona <strong>Enviar</strong>.</li>
-            </ol>
+            {/* Recipient / subject / body (editable) */}
+            {trayStatus === 'online' && (
+              <>
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wide text-slate-600">Para</Label>
+                  <Input
+                    type="email"
+                    value={to}
+                    onChange={(e) => setTo(e.target.value)}
+                    disabled={!hasEmail}
+                  />
+                  {!hasEmail && (
+                    <p className="text-xs text-rose-600">Este proveedor no tiene correo. Agrégalo en "Editar".</p>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs uppercase tracking-wide text-slate-600">Asunto</Label>
+                  <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs uppercase tracking-wide text-slate-600">Mensaje</Label>
+                    <Button size="sm" variant="ghost" onClick={handleCopyBody} className="h-6 text-xs">
+                      {copied ? (
+                        <><CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Copiado</>
+                      ) : (
+                        <><Copy className="w-3 h-3 mr-1" /> Copiar</>
+                      )}
+                    </Button>
+                  </div>
+                  <Textarea
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    rows={10}
+                    className="font-mono text-xs"
+                  />
+                </div>
+              </>
+            )}
 
-            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3">
-              <strong>Requisitos:</strong> Windows con Microsoft Outlook instalado y
-              configurado. Si usas Mac o Gmail web, usa mejor la pestaña
-              <strong> &ldquo;Abrir mi correo&rdquo;</strong>.
-            </div>
+            {sent && trayStatus === 'online' && (
+              <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800">
+                <p className="flex items-center gap-2 font-semibold mb-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  ¡Listo! Outlook abierto con todo preparado
+                </p>
+                {trayResult && (
+                  <p className="text-xs text-emerald-700">
+                    Archivos guardados en: {trayResult}
+                  </p>
+                )}
+                <p className="text-xs text-emerald-700 mt-1">
+                  Revisa el correo en Outlook y pulsa "Enviar".
+                </p>
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">
+                {error}
+              </div>
+            )}
+
+            {trayStatus === 'online' && (
+              <div className="flex justify-end pt-2">
+                <Button
+                  onClick={handlePrepareInTray}
+                  disabled={sending || !hasEmail}
+                  size="lg"
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {sending ? (
+                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Preparando...</>
+                  ) : (
+                    <><Mailbox className="w-4 h-4 mr-2" /> Preparar en Outlook</>
+                  )}
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
-
-          {/* ---------- Option A: mailto ---------- */}
+          {/* ---------- Option B: mailto ---------- */}
           <TabsContent value="mailto" className="space-y-3 mt-3">
             <div className="rounded-md bg-sky-50 border border-sky-200 p-3 text-sm text-sky-900">
               <p className="font-semibold mb-1">¿Cómo funciona?</p>
               <ol className="list-decimal list-inside space-y-0.5 text-sky-800 text-[13px]">
                 <li>Descarga el PDF y la gráfica con los botones de abajo.</li>
-                <li>Pulsa <strong>&ldquo;Abrir mi correo&rdquo;</strong> para abrir Outlook / Gmail / Apple Mail con el mensaje ya redactado.</li>
+                <li>Pulsa <strong>&ldquo;Abrir mi correo&rdquo;</strong> para abrir Outlook/Gmail con el mensaje.</li>
                 <li>Adjunta manualmente los dos archivos descargados y envía.</li>
               </ol>
             </div>
 
             <div className="flex flex-wrap gap-2">
               <Button asChild size="sm" variant="default" className="bg-slate-900 hover:bg-slate-800">
-                <a
-                  href={`/api/evaluations/${ev.id}/pdf`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download
-                >
-                  <Download className="w-4 h-4 mr-2" />
+                <a href={`/api/evaluations/${ev.id}/pdf`} target="_blank" rel="noopener noreferrer" download>
+                  <FileText className="w-4 h-4 mr-2" />
                   Descargar PDF
                 </a>
               </Button>
               <Button asChild size="sm" variant="default" className="bg-emerald-700 hover:bg-emerald-800">
-                <a
-                  href={`/api/evaluations/${ev.id}/chart`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download
-                >
-                  <Download className="w-4 h-4 mr-2" />
+                <a href={`/api/evaluations/${ev.id}/chart`} target="_blank" rel="noopener noreferrer" download>
+                  <ImageIcon className="w-4 h-4 mr-2" />
                   Descargar gráfica
                 </a>
               </Button>
@@ -260,12 +376,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
 
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-slate-600">Para</Label>
-              <Input
-                type="email"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                placeholder={ev.correo || 'proveedor@correo.com'}
-              />
+              <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder={ev.correo || 'proveedor@correo.com'} />
             </div>
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-slate-600">Asunto</Label>
@@ -274,37 +385,19 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label className="text-xs uppercase tracking-wide text-slate-600">Mensaje</Label>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleCopyBody}
-                  className="h-6 text-xs"
-                >
+                <Button size="sm" variant="ghost" onClick={handleCopyBody} className="h-6 text-xs">
                   {copied ? (
-                    <>
-                      <CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Copiado
-                    </>
+                    <><CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Copiado</>
                   ) : (
-                    <>
-                      <Copy className="w-3 h-3 mr-1" /> Copiar
-                    </>
+                    <><Copy className="w-3 h-3 mr-1" /> Copiar</>
                   )}
                 </Button>
               </div>
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={12}
-                className="font-mono text-xs"
-              />
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="font-mono text-xs" />
             </div>
 
             <div className="flex flex-wrap gap-2 justify-end pt-2">
-              <Button
-                asChild
-                size="lg"
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
+              <Button asChild size="lg" className="bg-emerald-600 hover:bg-emerald-700">
                 <a href={mailtoHref}>
                   <Mail className="w-4 h-4 mr-2" />
                   Abrir mi correo
@@ -313,28 +406,20 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
             </div>
           </TabsContent>
 
-          {/* ---------- Option B: SMTP ---------- */}
+          {/* ---------- Option C: SMTP ---------- */}
           <TabsContent value="smtp" className="space-y-3 mt-3">
             <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
               <p className="font-semibold mb-1">Requiere configuración SMTP</p>
               <p className="text-[13px]">
-                Para usar esta opción, configura estas variables de entorno en tu
-                despliegue:
-                <code className="block mt-1 p-2 bg-amber-100 rounded text-xs">
-                  SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM
-                </code>
-                Con Gmail usa una <strong>App Password</strong> (no tu contraseña normal).
-                Si no está configurado, usa la pestaña <strong>&ldquo;Abrir mi correo&rdquo;</strong>.
+                Para enviar directo desde el servidor (sin abrir Outlook), configura
+                las variables SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, SMTP_FROM en Vercel.
+                Para Outlook 365 usa: <code className="bg-amber-100 px-1 rounded">smtp.office365.com</code> puerto <code className="bg-amber-100 px-1 rounded">587</code>.
               </p>
             </div>
 
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-slate-600">Para</Label>
-              <Input
-                type="email"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
+              <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-slate-600">Asunto</Label>
@@ -342,20 +427,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
             </div>
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-slate-600">Mensaje</Label>
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={10}
-                className="font-mono text-xs"
-              />
-            </div>
-
-            <div className="rounded-md bg-slate-50 border border-slate-200 p-3 text-xs text-slate-600">
-              <strong>Adjuntos automáticos:</strong>
-              <ul className="list-disc list-inside mt-1 space-y-0.5">
-                <li>Evaluacion-{ev.proveedor}.pdf</li>
-                <li>Grafica-comparativa-{ev.proveedor}.png</li>
-              </ul>
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="font-mono text-xs" />
             </div>
 
             {sent && (
@@ -365,27 +437,15 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
               </div>
             )}
             {error && (
-              <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">
-                {error}
-              </div>
+              <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">{error}</div>
             )}
 
             <div className="flex justify-end pt-2">
-              <Button
-                onClick={handleSendSmtp}
-                disabled={sending || !to}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
+              <Button onClick={handleSendSmtp} disabled={sending || !to} className="bg-emerald-600 hover:bg-emerald-700">
                 {sending ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Enviando…
-                  </>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Enviando…</>
                 ) : (
-                  <>
-                    <Send className="w-4 h-4 mr-2" />
-                    Enviar con PDF + gráfica
-                  </>
+                  <><Send className="w-4 h-4 mr-2" /> Enviar con PDF + gráfica</>
                 )}
               </Button>
             </div>
@@ -410,12 +470,7 @@ function buildMailto(to: string, subject: string, body: string): string {
   if (to) params.set('to', to)
   params.set('subject', subject)
   params.set('body', body)
-  // Append cc support if needed
-  // Use mailto: with URL-encoded params; line breaks become %0D%0A
-  return `mailto:${encodeURIComponent(to || '')}?${params
-    .toString()
-    .replace(/\+/g, '%20')
-    .replace(/%0A/g, '%0D%0A')}`
+  return `mailto:${encodeURIComponent(to || '')}?${params.toString().replace(/\+/g, '%20').replace(/%0A/g, '%0D%0A')}`
 }
 
 function buildDefaultBody(ev: Evaluation, evaluador: string, cargo: string): string {
@@ -451,4 +506,9 @@ function formatDate(s: string): string {
     if (y && m && d) return `${d}/${m}/${y}`
   }
   return s
+}
+
+function getMonthName(): string {
+  const months = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+  return months[new Date().getMonth()]
 }
