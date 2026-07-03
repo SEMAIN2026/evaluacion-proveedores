@@ -15,6 +15,10 @@ Set fso = CreateObject("Scripting.FileSystemObject")
 scriptDir = fso.GetParentFolderName(WScript.ScriptFullName)
 pyScript = scriptDir & "\semain_tray.py"
 
+' CRITICAL: Change working directory to the script folder so all
+' relative paths (logs, etc.) resolve correctly
+WshShell.CurrentDirectory = scriptDir
+
 ' Check if semain_tray.py exists
 If Not fso.FileExists(pyScript) Then
     MsgBox "No se encontro el archivo:" & vbCrLf & pyScript & vbCrLf & vbCrLf & "Asegurate de que semain_tray.py este en la misma carpeta que este archivo.", vbCritical, "SEMAIN - Error"
