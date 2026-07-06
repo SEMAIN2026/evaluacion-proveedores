@@ -3,30 +3,19 @@
   SEMAIN - Asistente de Evaluación de Proveedores (Outlook Tray)
 ===================================================================
 
-Este programa se ejecuta EN SEGUNDO PLANO en tu computadora (Windows).
-Aparece como un icono verde con "S" en la bandeja del sistema (system tray).
-NO abre ninguna ventana de consola.
+Se ejecuta en segundo plano como un icono junto al reloj de Windows.
+- Sin ventana visible
+- Click derecho → menú con opciones
+- Escucha en http://127.0.0.1:8765 para recibir solicitudes de la web
 
-¿Qué hace?
-  1. Escucha en http://127.0.0.1:8765
-  2. Cuando la página web le envía una solicitud:
-     a. Descarga el PDF de evaluación y la gráfica comparativa
-     b. Los guarda en:
-        C:\\Users\\<tu-usuario>\\Desktop\\WALTER\\ALMACEN\\EVALUACION DE PROVEDORES\\<AÑO>\\<MES>\\
-        (crea las carpetas si no existen)
-     c. Abre Microsoft Outlook con un correo nuevo:
-        - Destinatario: el correo del proveedor
-        - Asunto: "Evaluación de Proveedor - <nombre> | Calificación: XX.X"
-        - Cuerpo: mensaje en español con el resumen
-        - Adjuntos: el PDF y la gráfica
-     d. El correo queda listo para revisar y enviar
+Cuando la web envía una solicitud:
+  1. Descarga el PDF y la gráfica
+  2. Los guarda en ...\\EVALUACION DE PROVEDORES\\<AÑO>\\<MES>\\
+  3. Abre Outlook con el correo listo (destinatario, asunto, cuerpo, adjuntos)
 
-¿Cómo instalarlo?
-  1. Instala Python 3.10+ desde https://python.org (marca "Add to PATH")
-  2. Haz doble clic en instalar.bat para instalar dependencias y crear el acceso directo
-  3. Haz doble clic en "SEMAIN - Asistente" en el Escritorio
-
-Para cerrar: clic derecho en el icono verde → "Salir"
+El enfoque de conexión a Outlook es IDÉNTICO al de pv_monitor_tray.py
+para que ambas apps puedan coexistir sin el error "solo puede ejecutarse
+una versión de Outlook a la vez".
 """
 
 import sys
@@ -35,15 +24,13 @@ import json
 import threading
 import time
 import datetime
+import subprocess
 import urllib.request
 import urllib.error
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-# ====================================================================
 # CRITICAL: Initialize COM BEFORE importing win32com.client
-# This fixes the "CoInitialize has not been called" error.
-# ====================================================================
 try:
     import pythoncom
     pythoncom.CoInitialize()
@@ -79,6 +66,10 @@ MESES_ES = [
     "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
 ]
 
+# Estado global
+outlook_app = None  # instancia persistente de Outlook.Application (como pv_monitor)
+outlook_connected = False
+
 
 def get_save_folder():
     now = datetime.datetime.now()
@@ -98,46 +89,92 @@ def download_file(url, filepath):
     return filepath
 
 
-def get_outlook_app():
-    """
-    Connect to the ALREADY RUNNING Outlook instance. Never open a new one.
-    pv_monitor_tray.py keeps Outlook open, so we just attach to it.
+def sanitize_filename(s):
+    invalid = '<>:"/\\|?*'
+    for ch in invalid:
+        s = s.replace(ch, '_')
+    return s.strip()[:60]
 
-    Returns (outlook_app, error_message_or_None).
+
+# ====================================================================
+# CONEXIÓN A OUTLOOK — idéntico enfoque que pv_monitor_tray.py
+# ====================================================================
+# pv_monitor ya tiene Outlook abierto y lo mantiene. Aquí usamos la misma
+# lógica para reconectarnos si Outlook se cae, y para coexistir.
+def ensure_outlook_connected():
     """
-    # Método 1: GetActiveObject — conectar a instancia EXISTENTE
-    # Este es el método más seguro cuando otro programa ya tiene Outlook abierto.
+    Asegura que outlook_app esté conectado. Si ya lo está, lo reutiliza.
+    Si no, intenta conectar (Dispatch primero porque pv_monitor ya abrió Outlook).
+    NUNCA abre una nueva instancia si una ya está corriendo.
+    """
+    global outlook_app, outlook_connected
+
+    # Si ya tenemos conexión, verificar que sigue viva
+    if outlook_app is not None:
+        try:
+            # Test mínimo: GetNamespace debe responder
+            outlook_app.GetNamespace("MAPI")
+            return True
+        except Exception:
+            outlook_app = None
+            outlook_connected = False
+
     try:
-        outlook = win32com.client.GetActiveObject("Outlook.Application")
-        return outlook, None
+        pythoncom.CoInitialize()
+    except Exception:
+        pass
+
+    # Método 1: Dispatch — se conecta a la instancia existente (NO abre nueva)
+    try:
+        outlook_app = win32com.client.Dispatch("Outlook.Application")
+        outlook_app.GetNamespace("MAPI")  # test
+        outlook_connected = True
+        return True
     except Exception as e:
         err1 = str(e)
 
-    # Método 2: Dispatch — también se conecta a la instancia existente
-    # (NO abre una nueva si una ya está corriendo)
+    # Método 2: GetActiveObject — conectar a instancia existente (alternativa)
     try:
-        outlook = win32com.client.Dispatch("Outlook.Application")
-        return outlook, None
+        outlook_app = win32com.client.GetActiveObject("Outlook.Application")
+        outlook_app.GetNamespace("MAPI")  # test
+        outlook_connected = True
+        return True
     except Exception as e:
         err2 = str(e)
 
-    # Todos fallaron — NO intentamos abrir Outlook (pv_monitor lo tiene)
-    return None, (
-        f"No se pudo conectar a Outlook.\n\n"
-        f"Causa más probable:\n"
-        f"Outlook no está abierto o está bloqueado.\n\n"
-        f"Solución:\n"
-        f"1. Abre Outlook MANUALMENTE (doble clic en el icono de Outlook)\n"
-        f"2. Espera a que cargue (veas la bandeja de entrada)\n"
-        f"3. NO lo cierres — dejalo abierto\n"
-        f"4. Vuelve a la web y pulsa 'Preparar en Outlook' otra vez\n\n"
-        f"Si Outlook ya está abierto y sigue el error:\n"
-        f"- Cierra Outlook completamente\n"
-        f"- Cierra pv_monitor (clic derecho en su icono → Salir)\n"
-        f"- Abre Outlook manualmente\n"
-        f"- Vuelve a abrir pv_monitor y semain\n"
-        f"Errores técnicos:\n- {err1}\n- {err2}"
-    )
+    # Si Outlook NO está corriendo en absoluto, abrirlo UNA sola vez
+    try:
+        result = subprocess.run(
+            ['tasklist', '/FI', 'IMAGENAME eq outlook.exe'],
+            capture_output=True, text=True, timeout=5
+        )
+        if 'outlook.exe' not in result.stdout.lower():
+            # Outlook realmente no está corriendo — abrirlo
+            subprocess.Popen(['cmd', '/c', 'start', 'outlook'], shell=False)
+            time.sleep(10)
+            try:
+                outlook_app = win32com.client.Dispatch("Outlook.Application")
+                outlook_app.GetNamespace("MAPI")
+                outlook_connected = True
+                return True
+            except Exception as e:
+                err1 = f"{err1} | después de abrir: {e}"
+        else:
+            # Outlook SÍ está corriendo pero no podemos conectarnos
+            # Esperar un poco y reintentar (pv_monitor puede estar reiniciándolo)
+            time.sleep(3)
+            try:
+                outlook_app = win32com.client.Dispatch("Outlook.Application")
+                outlook_app.GetNamespace("MAPI")
+                outlook_connected = True
+                return True
+            except Exception as e:
+                err1 = f"{err1} | reintento: {e}"
+    except Exception:
+        pass
+
+    outlook_connected = False
+    return False
 
 
 def prepare_outlook_email(data):
@@ -159,24 +196,29 @@ def prepare_outlook_email(data):
             'warning': 'Outlook no disponible. Los archivos se guardaron.'
         }
 
-    try:
-        pythoncom.CoInitialize()
-    except Exception:
-        pass
-
-    # Connect to Outlook (try running instance first, then new)
-    outlook, outlook_err = get_outlook_app()
-    if outlook is None:
+    # Intentar conectar a Outlook (reutiliza si ya está conectado)
+    if not ensure_outlook_connected():
         return {
             'success': False,
-            'error': outlook_err,
+            'error': (
+                "No se pudo conectar a Outlook.\n\n"
+                "Solución:\n"
+                "1. Abre Outlook MANUALMENTE (doble clic en el icono)\n"
+                "2. Espera a que cargue (veas la bandeja de entrada)\n"
+                "3. Dejalo abierto\n"
+                "4. Pulsa 'Preparar en Outlook' otra vez\n\n"
+                "Si Outlook está abierto y sigue el error:\n"
+                "- Reinicia tu PC\n"
+                "- Abre Outlook primero, luego pv_monitor y SEMAIN"
+            ),
             'savedTo': str(save_folder),
             'pdfFile': str(pdf_path),
             'chartFile': str(chart_path)
         }
 
+    # Crear el correo
     try:
-        mail = outlook.CreateItem(0)
+        mail = outlook_app.CreateItem(0)
         mail.To = data.get('email', '')
         mail.Subject = data.get('subject', '')
         mail.Body = data.get('body', '')
@@ -193,41 +235,17 @@ def prepare_outlook_email(data):
             'chartFile': str(chart_path)
         }
     except Exception as e:
+        # Si falla al crear el correo, resetear conexión para próximo intento
+        outlook_app = None
+        outlook_connected = False
         err_msg = str(e)
-        # Detect the "server execution failed" error specifically
-        if '-2146959355' in err_msg or '80080005' in err_msg:
-            helpful = (
-                f"Outlook no responde. Para arreglarlo:\n\n"
-                f"1. Abre Outlook MANUALMENTE con doble clic\n"
-                f"2. Si Outlook da error, abre Administrador de Tareas "
-                f"(Ctrl+Shift+Esc)\n"
-                f"3. Termina TODOS los procesos OUTLOOK.EXE\n"
-                f"4. Abre Outlook de nuevo manualmente\n"
-                f"5. Dejalo abierto y pulsa 'Preparar en Outlook' otra vez\n\n"
-                f"Error tecnico: {err_msg}"
-            )
-        elif '-2147221008' in err_msg:
-            helpful = (
-                f"Error de inicializacion COM. Reinicia la app de SEMAIN "
-                f"(clic derecho en icono verde → Salir, y vuelve a abrirla).\n\n"
-                f"Error tecnico: {err_msg}"
-            )
-        else:
-            helpful = f'Error al crear el correo: {err_msg}'
         return {
             'success': False,
-            'error': helpful,
+            'error': f'Error al crear el correo: {err_msg}\n\nSe reiniciará la conexión a Outlook. Intenta de nuevo.',
             'savedTo': str(save_folder),
             'pdfFile': str(pdf_path),
             'chartFile': str(chart_path)
         }
-
-
-def sanitize_filename(s):
-    invalid = '<>:"/\\|?*'
-    for ch in invalid:
-        s = s.replace(ch, '_')
-    return s.strip()[:60]
 
 
 # ====================================================================
@@ -260,8 +278,8 @@ class RequestHandler(BaseHTTPRequestHandler):
         if self.path == '/status':
             self._send_json(200, {
                 'running': True,
-                'version': '1.2',
-                'outlook': HAS_OUTLOOK,
+                'version': '2.0',
+                'outlook': outlook_connected,
                 'savePath': str(BASE_SAVE_PATH),
             })
         else:
@@ -279,14 +297,14 @@ class RequestHandler(BaseHTTPRequestHandler):
                 if result.get('success'):
                     show_notification(
                         f"Correo preparado para {data.get('providerName', '?')}",
-                        f"Archivos guardados y Outlook abierto con PDF y gráfica adjuntos."
+                        "Archivos guardados y Outlook abierto con PDF y gráfica adjuntos."
                     )
                 else:
-                    show_notification("Error", result.get('error', 'Error desconocido'))
+                    show_notification("Error", result.get('error', 'Error desconocido')[:200])
 
                 self._send_json(200, result)
             except Exception as e:
-                show_notification("Error", str(e))
+                show_notification("Error", str(e)[:200])
                 self._send_json(500, {'error': str(e)})
         else:
             self._send_json(404, {'error': 'not found'})
@@ -339,7 +357,7 @@ def on_status(icon, item):
     folder = get_save_folder()
     show_notification(
         "SEMAIN - Estado",
-        f"Servidor activo en puerto {PORT}\nOutlook: {'OK' if HAS_OUTLOOK else 'NO'}\nGuardar en: {folder}"
+        f"Servidor: puerto {PORT}\nOutlook: {'OK' if outlook_connected else 'NO'}\nGuardar en: {folder}"
     )
 
 
@@ -349,12 +367,23 @@ def on_open_folder(icon, item):
     os.startfile(str(folder))
 
 
+def on_reconnect_outlook(icon, item):
+    global outlook_app, outlook_connected
+    outlook_app = None
+    outlook_connected = False
+    if ensure_outlook_connected():
+        show_notification("SEMAIN", "Outlook reconectado correctamente.")
+    else:
+        show_notification("SEMAIN", "No se pudo reconectar a Outlook.")
+
+
 def setup_tray():
     global _icon
     image = create_icon_image()
     menu = Menu(
         item('Estado', on_status, default=True),
         item('Abrir carpeta de guardado', on_open_folder),
+        item('Reconectar Outlook', on_reconnect_outlook),
         Menu.SEPARATOR,
         item('Salir', on_quit),
     )

@@ -38,6 +38,7 @@ import {
   LayoutGrid,
   Eye,
   EyeOff,
+  LogOut,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -110,6 +111,11 @@ export default function Home() {
     setEditing(null)
     setView('new')
     setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    window.location.href = '/login'
   }
 
   const handleEdit = (ev: Evaluation) => {
@@ -193,6 +199,15 @@ export default function Home() {
             >
               <Plus className="w-4 h-4 mr-1.5" />
               Nueva evaluación
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleLogout}
+              className="text-slate-500 hover:text-rose-600 hover:bg-rose-50"
+              title="Cerrar sesión"
+            >
+              <LogOut className="w-4 h-4" />
             </Button>
           </div>
         </div>
