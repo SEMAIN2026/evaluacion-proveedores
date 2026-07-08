@@ -115,13 +115,18 @@ const CONTENT_W = M_RIGHT - M_LEFT
 const COL1_RIGHT = 254.13
 const COL2_RIGHT = 460.68
 
-// Colors
-const LIGHT_BLUE = '#DDEBFB'
-const DARK_GREEN = '#00B050'
-const LIGHT_GREEN = '#92D050'
-const ORANGE = '#FFC000'
-const RED = '#FF0000'
-const BLACK = '#000000'
+// Colors — refined SEMAIN palette (brand-aligned, slightly softer)
+const LIGHT_BLUE = '#E8F2D5'      // soft SEMAIN-green tint (was harsh blue)
+const LIGHT_BLUE_HEADER = '#F0F7E3' // even softer for table header
+const DARK_GREEN = '#7BA635'       // SEMAIN green (darker shade for EXCELENTE)
+const LIGHT_GREEN = '#A0CD50'      // SEMAIN green (BUENO)
+const ORANGE = '#E8923C'           // softer amber (was garish #FFC000)
+const RED = '#D9534F'              // muted red (was harsh #FF0000)
+const BLACK = '#302C2B'            // SEMAIN charcoal (was pure black)
+const DARK_TEXT = '#1F1B1A'        // slightly softer for body text
+const MUTED_TEXT = '#6B6968'       // for secondary text
+const SEMAIN_DARK = '#302C2B'      // brand dark for header
+const SEMAIN_GREEN = '#A0CD50'     // brand green accent
 const WHITE = '#FFFFFF'
 const GRAY = '#808080'
 
@@ -189,10 +194,12 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         style={{ margin: 0, padding: 0, position: 'relative' }}
       >
         {/* ============== 1. HEADER BAND (y=22 to y=74.3) ============== */}
-        {/* 3-column background fills */}
-        <View style={{ position: 'absolute', left: M_LEFT, top: 22, width: COL1_RIGHT - M_LEFT, height: 52.3, backgroundColor: WHITE }} />
-        <View style={{ position: 'absolute', left: COL1_RIGHT, top: 22, width: COL2_RIGHT - COL1_RIGHT, height: 52.3, backgroundColor: LIGHT_BLUE }} />
-        <View style={{ position: 'absolute', left: COL2_RIGHT, top: 22, width: M_RIGHT - COL2_RIGHT, height: 52.3, backgroundColor: LIGHT_BLUE }} />
+        {/* 3-column background fills — SEMAIN dark with green accent */}
+        <View style={{ position: 'absolute', left: M_LEFT, top: 22, width: COL1_RIGHT - M_LEFT, height: 52.3, backgroundColor: SEMAIN_DARK }} />
+        <View style={{ position: 'absolute', left: COL1_RIGHT, top: 22, width: COL2_RIGHT - COL1_RIGHT, height: 52.3, backgroundColor: SEMAIN_DARK }} />
+        <View style={{ position: 'absolute', left: COL2_RIGHT, top: 22, width: M_RIGHT - COL2_RIGHT, height: 52.3, backgroundColor: SEMAIN_DARK }} />
+        {/* Green accent line at bottom of header */}
+        <View style={{ position: 'absolute', left: M_LEFT, top: 73.3, width: M_RIGHT - M_LEFT, height: 2, backgroundColor: SEMAIN_GREEN }} />
 
         {/* Logo (left column, centered) */}
         {logoDataUrl && (
@@ -209,7 +216,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           />
         )}
 
-        {/* Title (middle column, centered) */}
+        {/* Title (middle column, centered) — white on dark */}
         <Text
           style={{
             position: 'absolute',
@@ -219,17 +226,17 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
             textAlign: 'center',
             fontFamily: 'Helvetica-Bold',
             fontSize: 11,
-            color: BLACK,
+            color: WHITE,
           }}
         >
           EVALUACIÓN DE PROVEEDORES
         </Text>
 
-        {/* Code & date (right column) */}
-        <Text style={{ position: 'absolute', left: 475.9, top: 39, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>
+        {/* Code & date (right column) — light text on dark */}
+        <Text style={{ position: 'absolute', left: 475.9, top: 39, fontFamily: 'Helvetica', fontSize: 8, color: '#CBD5E1' }}>
           F-CAL-07 REV01
         </Text>
-        <Text style={{ position: 'absolute', left: 475.9, top: 50, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>
+        <Text style={{ position: 'absolute', left: 475.9, top: 50, fontFamily: 'Helvetica', fontSize: 8, color: '#94A3B8' }}>
           05/07/2021
         </Text>
 
@@ -278,16 +285,16 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         <Text style={{ position: 'absolute', left: 413.4, top: 130.4, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>Excelente=4</Text>
 
         {/* ============== 4. TABLE HEADER (y=145 to y=160.3) ============== */}
-        <View style={{ position: 'absolute', left: M_LEFT, top: 145, width: CONTENT_W, height: 15.3, backgroundColor: LIGHT_BLUE }} />
-        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
+        <View style={{ position: 'absolute', left: M_LEFT, top: 145, width: CONTENT_W, height: 15.3, backgroundColor: SEMAIN_DARK }} />
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: WHITE }}>
           Criterio a evaluar
         </Text>
-        <Text style={{ position: 'absolute', left: 388.5, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: BLACK }}>
+        <Text style={{ position: 'absolute', left: 388.5, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: WHITE }}>
           Calificación
         </Text>
         {/* Table header vertical separators */}
         {[44.0, 362.45, 460.08].map((x, i) => (
-          <View key={`th-sep-${i}`} style={{ position: 'absolute', left: x - 0.5, top: 144, width: 1.5, height: 17.2, backgroundColor: BLACK }} />
+          <View key={`th-sep-${i}`} style={{ position: 'absolute', left: x - 0.5, top: 144, width: 1.5, height: 17.2, backgroundColor: SEMAIN_DARK }} />
         ))}
 
         {/* ============== 5. CRITERIA ROWS (y=163.5 to y=304) ============== */}
@@ -296,7 +303,11 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           const score = scores[i] || 0
           return (
             <View key={`crit-${i}`}>
-              <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: y, fontFamily: 'Helvetica', fontSize: 9, color: BLACK }}>
+              {/* Alternating row background for readability */}
+              {i % 2 === 1 && (
+                <View style={{ position: 'absolute', left: M_LEFT, top: y - 2, width: CONTENT_W, height: 14.5, backgroundColor: '#F8FAF3' }} />
+              )}
+              <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: y, fontFamily: 'Helvetica', fontSize: 9, color: DARK_TEXT }}>
                 {label}
               </Text>
               <Text
@@ -308,7 +319,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
                   textAlign: 'right',
                   fontFamily: 'Helvetica-Bold',
                   fontSize: 10,
-                  color: BLACK,
+                  color: DARK_TEXT,
                 }}
               >
                 {String(score)}
