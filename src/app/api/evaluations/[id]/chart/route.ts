@@ -197,7 +197,7 @@ function buildChartSVG(
     const isTarget = e.id === highlightId
     const w = Math.max(2, (e.calificacion / 100) * chartW)
     const barColor = classificationColor(e.clasificacion)
-    const providerLabel = truncate(e.proveedor, 42)
+    const providerLabel = truncate(e.proveedor, 38)
     const scoreText = e.calificacion.toFixed(1)
 
     // Row background highlight for target — use SEMAIN green tint
@@ -219,10 +219,18 @@ function buildChartSVG(
       bars += `<rect x="${barStart}" y="${y}" width="${w}" height="${rowH}" rx="4" fill="none" stroke="${SEMAIN_DARK}" stroke-width="2"/>`
     }
 
-    // Score text (after the bar)
-    bars += `<text x="${barStart + w + 8}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="700" fill="${isTarget ? SEMAIN_DARK : '#475569'}">${scoreText}</text>`
+    // Score text — place INSIDE the bar (white, right-aligned) if bar is wide enough
+    // Otherwise place AFTER the bar (dark text)
+    const minBarWidthForInsideText = 55 // need ~55px to fit "100.0"
+    if (w > minBarWidthForInsideText) {
+      // Inside the bar, right-aligned, white text
+      bars += `<text x="${barStart + w - 8}" y="${y + rowH / 2 + 5}" text-anchor="end" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="700" fill="#ffffff">${scoreText}</text>`
+    } else {
+      // After the bar, dark text
+      bars += `<text x="${barStart + w + 8}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="${isTarget ? 15 : 13}" font-weight="700" fill="${isTarget ? SEMAIN_DARK : '#475569'}">${scoreText}</text>`
+    }
 
-    // Classification text (at the right)
+    // Classification text (at the right, fixed position — never overlaps)
     bars += `<text x="${barEnd + 15}" y="${y + rowH / 2 + 5}" font-family="Carlito" font-size="12" font-weight="600" fill="${barColor}">${e.clasificacion}</text>`
   })
 

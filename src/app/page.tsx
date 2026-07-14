@@ -26,6 +26,7 @@ import { ProviderCard } from '@/components/evaluations/provider-card'
 import { EmailModal } from '@/components/evaluations/email-modal'
 import { StatsDashboard } from '@/components/evaluations/stats-dashboard'
 import { ComparisonChart } from '@/components/evaluations/comparison-chart'
+import { SelectionForm } from '@/components/evaluations/selection-form'
 import type { Evaluation } from '@/lib/evaluations'
 import {
   ClipboardList,
@@ -41,10 +42,11 @@ import {
   LogOut,
   Calendar,
   X,
+  UserPlus,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-type View = 'list' | 'new' | 'dashboard'
+type View = 'list' | 'new' | 'dashboard' | 'selection'
 
 export default function Home() {
   const { data, loading, save, remove } = useEvaluations()
@@ -224,6 +226,16 @@ export default function Home() {
             </Button>
             <Button
               size="sm"
+              onClick={() => setView('selection')}
+              variant="outline"
+              className={cn(view === 'selection' && 'bg-emerald-50 border-emerald-400 text-emerald-700')}
+              title="Formato de selección y aceptación de proveedores nuevos (F-COM-19)"
+            >
+              <UserPlus className="w-4 h-4 mr-1.5" />
+              Selección (F-COM-19)
+            </Button>
+            <Button
+              size="sm"
               onClick={handleNew}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
@@ -262,6 +274,11 @@ export default function Home() {
               onClear={handleFormClear}
             />
           </div>
+        )}
+
+        {/* Selection form (shown when view === 'selection') */}
+        {view === 'selection' && (
+          <SelectionForm />
         )}
 
         {/* Always-visible list */}
