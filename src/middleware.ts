@@ -19,11 +19,26 @@ const PUBLIC_PATHS = [
   '/fonts',
 ]
 
+// API routes that serve downloadable files (PDF, chart PNG, CSV export)
+// These need to be accessible even when the cookie doesn't transfer
+// (e.g., opening a download link in a new tab)
+const PUBLIC_API_PATTERNS = [
+  /^\/api\/evaluations\/[^/]+\/pdf$/,
+  /^\/api\/evaluations\/[^/]+\/chart$/,
+  /^\/api\/evaluations\/[^/]+\/outlook-script$/,
+  /^\/api\/export$/,
+]
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
 
   // Allow public paths
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+
+  // Allow public API patterns (file downloads)
+  if (PUBLIC_API_PATTERNS.some((p) => p.test(pathname))) {
     return NextResponse.next()
   }
 

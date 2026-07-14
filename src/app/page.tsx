@@ -39,6 +39,8 @@ import {
   Eye,
   EyeOff,
   LogOut,
+  Calendar,
+  X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -56,7 +58,27 @@ export default function Home() {
   const [classFilter, setClassFilter] = useState<string>('ALL')
   const [sort, setSort] = useState<'recent' | 'best' | 'worst' | 'name'>('recent')
   const [showDashboard, setShowDashboard] = useState(false)
+  const [monthFilter, setMonthFilter] = useState<string>('ALL') // 'ALL' or 'YYYY-MM'
   const formRef = useRef<HTMLDivElement>(null)
+
+  // Available months derived from data (YYYY-MM → label)
+  const availableMonths = useMemo(() => {
+    const map = new Map<string, { label: string; count: number }>()
+    const monthNames = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    for (const ev of data) {
+      const d = new Date(ev.fecha)
+      if (isNaN(d.getTime())) continue
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = `${monthNames[d.getMonth()]} ${d.getFullYear()}`
+      const existing = map.get(key)
+      if (existing) existing.count++
+      else map.set(key, { label, count: 1 })
+    }
+    // Sort by key descending (most recent first)
+    return Array.from(map.entries())
+      .sort((a, b) => b[0].localeCompare(a[0]))
+      .map(([key, val]) => ({ key, ...val }))
+  }, [data])
 
   // Ranked data
   const ranked = useMemo(() => {
@@ -68,6 +90,14 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     let arr = [...data]
+    // Month/year filter
+    if (monthFilter !== 'ALL') {
+      const [y, m] = monthFilter.split('-').map(Number)
+      arr = arr.filter((e) => {
+        const d = new Date(e.fecha)
+        return d.getFullYear() === y && (d.getMonth() + 1) === m
+      })
+    }
     if (search.trim()) {
       const q = search.toLowerCase()
       arr = arr.filter(
@@ -100,7 +130,7 @@ export default function Home() {
         })
     }
     return arr
-  }, [data, search, classFilter, sort])
+  }, [data, search, classFilter, sort, monthFilter])
 
   const avg = data.length > 0
     ? data.reduce((s, e) => s + e.calificacion, 0) / data.length
@@ -237,6 +267,40 @@ export default function Home() {
         {/* Always-visible list */}
         {view === 'list' && (
           <>
+            {/* Month selector — prominent, full width */}
+            <div className="bg-gradient-to-r from-emerald-50 to-slate-50 border border-emerald-200 rounded-lg p-3">
+              <div className="flex items-center gap-3 flex-wrap">
+                <Calendar className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span className="text-sm font-semibold text-slate-700 shrink-0">Período:</span>
+                <div className="flex-1 min-w-[200px] max-w-md">
+                  <Select value={monthFilter} onValueChange={setMonthFilter}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue placeholder="Todos los meses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los meses ({data.length})</SelectItem>
+                      {availableMonths.map((m) => (
+                        <SelectItem key={m.key} value={m.key}>
+                          {m.label} ({m.count})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {monthFilter !== 'ALL' && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setMonthFilter('ALL')}
+                    className="text-slate-500 hover:text-slate-700"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1" />
+                    Quitar filtro
+                  </Button>
+                )}
+              </div>
+            </div>
+
             {/* Search & filters */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-center bg-white border border-slate-200 rounded-lg p-3">
               <div className="md:col-span-5 relative">
