@@ -146,7 +146,7 @@ function buildChartSVG(
   // Header — SEMAIN brand colors: dark charcoal background + green accent line
   // Logo aligned LEFT, title centered, date on right
   let header = `
-    <rect x="0" y="0" width="${W}" height="${padTop - 20}" fill="${SEMAIN_DARK}"/>
+    <rect x="0" y="0" width="${W}" height="${padTop - 20}" fill="#ffffff"/>
     <rect x="0" y="${padTop - 22}" width="${W}" height="3" fill="${SEMAIN_GREEN}"/>
   `
   if (logoBase64) {
@@ -154,16 +154,16 @@ function buildChartSVG(
     header += `<image href="${logoBase64}" x="${padL}" y="30" height="55" preserveAspectRatio="xMidYMid meet"/>`
   }
   header += `
-    <text x="${W / 2}" y="55" text-anchor="middle" font-family="Carlito" font-size="24" font-weight="700" fill="#ffffff">
+    <text x="${W / 2}" y="55" text-anchor="middle" font-family="Carlito" font-size="24" font-weight="700" fill="${SEMAIN_DARK}">
       Comparativo de Evaluación de Proveedores
     </text>
-    <text x="${W / 2}" y="80" text-anchor="middle" font-family="Carlito" font-size="13" fill="${SEMAIN_GREEN}">
+    <text x="${W / 2}" y="80" text-anchor="middle" font-family="Carlito" font-size="13" fill="${SEMAIN_GREEN_DARK}">
       Posición de ${escapeXml(target?.proveedor ?? '')} frente a ${n - 1} proveedor${n - 1 === 1 ? '' : 'es'} evaluado${n - 1 === 1 ? '' : 's'}
     </text>
-    <text x="${W - padR}" y="50" text-anchor="end" font-family="Carlito" font-size="13" fill="#cbd5e1">
+    <text x="${W - padR}" y="50" text-anchor="end" font-family="Carlito" font-size="13" fill="#475569">
       ${new Date().toLocaleDateString('es-MX', { day: '2-digit', month: 'long', year: 'numeric' })}
     </text>
-    <text x="${W - padR}" y="72" text-anchor="end" font-family="Carlito" font-size="12" fill="#94a3b8">
+    <text x="${W - padR}" y="72" text-anchor="end" font-family="Carlito" font-size="12" fill="#64748b">
       Escala 0 - 100
     </text>
   `

@@ -180,21 +180,19 @@ function FCom19Document({ sel, logoDataUrl }: { sel: SelData; logoDataUrl: strin
     >
       <Page size="A4" style={{ margin: 0, padding: 0, position: 'relative', fontSize: 9, fontFamily: 'Helvetica', color: BLACK }}>
         {/* Header */}
-        <View style={{ backgroundColor: SEMAIN_DARK, flexDirection: 'row', alignItems: 'center', padding: 12, paddingBottom: 10 }}>
+        <View style={{ backgroundColor: WHITE, borderBottomWidth: 3, borderBottomColor: SEMAIN_GREEN, flexDirection: 'row', alignItems: 'center', padding: 12, paddingBottom: 10 }}>
           {logoDataUrl && (
             <PdfImage src={logoDataUrl} style={{ width: 120, height: 32, marginRight: 16, objectFit: 'contain' }} />
           )}
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, fontFamily: 'Helvetica-Bold', color: WHITE }}>
+            <Text style={{ fontSize: 13, fontFamily: 'Helvetica-Bold', color: SEMAIN_DARK }}>
               FORMATO DE SELECCIÓN Y ACEPTACIÓN DE PROVEEDORES
             </Text>
-            <Text style={{ fontSize: 9, color: '#CBD5E1', marginTop: 2 }}>
+            <Text style={{ fontSize: 9, color: MUTED, marginTop: 2 }}>
               F-COM-19 Rev.00
             </Text>
           </View>
         </View>
-        {/* Green accent line */}
-        <View style={{ backgroundColor: SEMAIN_GREEN, height: 3 }} />
 
         {/* Body */}
         <View style={{ padding: 20 }}>
@@ -224,8 +222,8 @@ function FCom19Document({ sel, logoDataUrl }: { sel: SelData; logoDataUrl: strin
           {/* Criteria sections */}
           {/* CRITERIO 1: Capacidad de respuesta (25%) */}
           <View style={{ marginBottom: 10 }}>
-            <View style={{ backgroundColor: SEMAIN_DARK, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
-              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: WHITE }}>
+            <View style={{ backgroundColor: '#F0F7E3', borderBottomWidth: 2, borderBottomColor: SEMAIN_GREEN, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
+              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: SEMAIN_DARK }}>
                 CRITERIO 1: CAPACIDAD DE RESPUESTA — Peso 25%
               </Text>
             </View>
@@ -245,8 +243,8 @@ function FCom19Document({ sel, logoDataUrl }: { sel: SelData; logoDataUrl: strin
 
           {/* CRITERIO 2: Entrega de bienes (40%) */}
           <View style={{ marginBottom: 10 }}>
-            <View style={{ backgroundColor: SEMAIN_DARK, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
-              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: WHITE }}>
+            <View style={{ backgroundColor: '#F0F7E3', borderBottomWidth: 2, borderBottomColor: SEMAIN_GREEN, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
+              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: SEMAIN_DARK }}>
                 CRITERIO 2: ENTREGA DE BIENES — Peso 40%
               </Text>
             </View>
@@ -266,8 +264,8 @@ function FCom19Document({ sel, logoDataUrl }: { sel: SelData; logoDataUrl: strin
 
           {/* CRITERIO 3: Cumplimiento de requisitos (35%) */}
           <View style={{ marginBottom: 10 }}>
-            <View style={{ backgroundColor: SEMAIN_DARK, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
-              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: WHITE }}>
+            <View style={{ backgroundColor: '#F0F7E3', borderBottomWidth: 2, borderBottomColor: SEMAIN_GREEN, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
+              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: SEMAIN_DARK }}>
                 CRITERIO 3: CUMPLIMIENTO DE REQUISITOS — Peso 35%
               </Text>
             </View>
@@ -293,8 +291,8 @@ function FCom19Document({ sel, logoDataUrl }: { sel: SelData; logoDataUrl: strin
 
           {/* CRITERIO 4: Certificaciones */}
           <View style={{ marginBottom: 10 }}>
-            <View style={{ backgroundColor: SEMAIN_DARK, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
-              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: WHITE }}>
+            <View style={{ backgroundColor: '#F0F7E3', borderBottomWidth: 2, borderBottomColor: SEMAIN_GREEN, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 3 }}>
+              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: SEMAIN_DARK }}>
                 CRITERIO 4: CERTIFICACIONES
               </Text>
             </View>

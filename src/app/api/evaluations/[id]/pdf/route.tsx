@@ -194,10 +194,10 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         style={{ margin: 0, padding: 0, position: 'relative' }}
       >
         {/* ============== 1. HEADER BAND (y=22 to y=74.3) ============== */}
-        {/* 3-column background fills — SEMAIN dark with green accent */}
-        <View style={{ position: 'absolute', left: M_LEFT, top: 22, width: COL1_RIGHT - M_LEFT, height: 52.3, backgroundColor: SEMAIN_DARK }} />
-        <View style={{ position: 'absolute', left: COL1_RIGHT, top: 22, width: COL2_RIGHT - COL1_RIGHT, height: 52.3, backgroundColor: SEMAIN_DARK }} />
-        <View style={{ position: 'absolute', left: COL2_RIGHT, top: 22, width: M_RIGHT - COL2_RIGHT, height: 52.3, backgroundColor: SEMAIN_DARK }} />
+        {/* 3-column background fills — WHITE with green accent line */}
+        <View style={{ position: 'absolute', left: M_LEFT, top: 22, width: COL1_RIGHT - M_LEFT, height: 52.3, backgroundColor: WHITE }} />
+        <View style={{ position: 'absolute', left: COL1_RIGHT, top: 22, width: COL2_RIGHT - COL1_RIGHT, height: 52.3, backgroundColor: WHITE }} />
+        <View style={{ position: 'absolute', left: COL2_RIGHT, top: 22, width: M_RIGHT - COL2_RIGHT, height: 52.3, backgroundColor: WHITE }} />
         {/* Green accent line at bottom of header */}
         <View style={{ position: 'absolute', left: M_LEFT, top: 73.3, width: M_RIGHT - M_LEFT, height: 2, backgroundColor: SEMAIN_GREEN }} />
 
@@ -216,7 +216,7 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
           />
         )}
 
-        {/* Title (middle column, centered) — white on dark */}
+        {/* Title (middle column, centered) — dark text on white */}
         <Text
           style={{
             position: 'absolute',
@@ -226,17 +226,17 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
             textAlign: 'center',
             fontFamily: 'Helvetica-Bold',
             fontSize: 11,
-            color: WHITE,
+            color: SEMAIN_DARK,
           }}
         >
           EVALUACIÓN DE PROVEEDORES
         </Text>
 
-        {/* Code & date (right column) — light text on dark */}
-        <Text style={{ position: 'absolute', left: 475.9, top: 39, fontFamily: 'Helvetica', fontSize: 8, color: '#CBD5E1' }}>
+        {/* Code & date (right column) — dark text on white */}
+        <Text style={{ position: 'absolute', left: 475.9, top: 39, fontFamily: 'Helvetica', fontSize: 8, color: SEMAIN_DARK }}>
           F-CAL-07 REV01
         </Text>
-        <Text style={{ position: 'absolute', left: 475.9, top: 50, fontFamily: 'Helvetica', fontSize: 8, color: '#94A3B8' }}>
+        <Text style={{ position: 'absolute', left: 475.9, top: 50, fontFamily: 'Helvetica', fontSize: 8, color: MUTED_TEXT }}>
           05/07/2021
         </Text>
 
@@ -285,16 +285,16 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         <Text style={{ position: 'absolute', left: 413.4, top: 130.4, fontFamily: 'Helvetica', fontSize: 8, color: BLACK }}>Excelente=4</Text>
 
         {/* ============== 4. TABLE HEADER (y=145 to y=160.3) ============== */}
-        <View style={{ position: 'absolute', left: M_LEFT, top: 145, width: CONTENT_W, height: 15.3, backgroundColor: SEMAIN_DARK }} />
-        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: WHITE }}>
+        <View style={{ position: 'absolute', left: M_LEFT, top: 145, width: CONTENT_W, height: 15.3, backgroundColor: '#F0F7E3' }} />
+        <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: SEMAIN_DARK }}>
           Criterio a evaluar
         </Text>
-        <Text style={{ position: 'absolute', left: 388.5, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: WHITE }}>
+        <Text style={{ position: 'absolute', left: 388.5, top: 148, fontFamily: 'Helvetica-Bold', fontSize: 10, color: SEMAIN_DARK }}>
           Calificación
         </Text>
         {/* Table header vertical separators */}
         {[44.0, 362.45, 460.08].map((x, i) => (
-          <View key={`th-sep-${i}`} style={{ position: 'absolute', left: x - 0.5, top: 144, width: 1.5, height: 17.2, backgroundColor: SEMAIN_DARK }} />
+          <View key={`th-sep-${i}`} style={{ position: 'absolute', left: x - 0.5, top: 144, width: 1.5, height: 17.2, backgroundColor: BLACK }} />
         ))}
 
         {/* ============== 5. CRITERIA ROWS (y=163.5 to y=304) ============== */}
