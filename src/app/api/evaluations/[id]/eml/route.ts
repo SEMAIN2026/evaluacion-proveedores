@@ -125,7 +125,13 @@ function escapeHtml(s: string): string {
  *  is the trick that stops Outlook 365 from inserting the user's
  *  signature AT THE TOP of the body — with HTML, Outlook respects the
  *  existing body content and appends the signature at the END, the way
- *  the user wants. */
+ *  the user wants.
+ *
+ *  IMPORTANT: We embed the signature directly in the HTML body so
+ *  Outlook doesn't insert its OWN signature at the top. When Outlook
+ *  detects that the body already contains a signature block (with
+ *  typical signature markers like a horizontal rule, name, position,
+ *  phone, etc.), it RESPECTS that block and doesn't prepend its own. */
 function bodyToHtml(body: string): string {
   // Convert plain text to HTML: paragraphs separated by blank lines
   // become <p> elements, single newlines become <br>, basic styling.
@@ -134,6 +140,20 @@ function bodyToHtml(body: string): string {
     const escaped = escapeHtml(p).replace(/\n/g, '<br/>')
     return `      <p style="margin:0 0 12px 0; line-height:1.5;">${escaped}</p>`
   })
+
+  // The signature block — included in the HTML body so Outlook doesn't
+  // try to insert its own (which it would put at the TOP, given the
+  // X-Unsent: 1 quirk). By embedding it here at the bottom, Outlook
+  // sees the body is already "signed" and respects the layout.
+  const signatureHtml = `
+    <div style="margin-top:24px; padding-top:12px; border-top:1px solid #cbd5e1; font-family:'Calibri','Segoe UI',Arial,sans-serif; font-size:10pt; color:#475569; line-height:1.4;">
+      <p style="margin:0 0 2px 0;"><strong style="color:#302C2B;">Ing. Walter Daniel Piñera Navarrete</strong> <span style="color:#94a3b8;">|</span> Compras y Almacén</p>
+      <p style="margin:0 0 2px 0;">Tel. (639) 120 5378</p>
+      <p style="margin:0 0 2px 0;">Política de Calidad</p>
+      <p style="margin:0 0 2px 0;"><a href="https://www.semain.com.mx" style="color:#7BA635; text-decoration:none;">www.semain.com.mx</a></p>
+      <p style="margin:8px 0 0 0; font-size:8pt; color:#94a3b8; font-style:italic;">Este correo es susceptible de eliminación de acuerdo a los parámetros del CAN-SPAM</p>
+    </div>`
+
   return `<!DOCTYPE html>
 <html>
   <head>
@@ -145,7 +165,7 @@ function bodyToHtml(body: string): string {
     </style>
   </head>
   <body>
-${htmlParagraphs.join('\n')}
+${htmlParagraphs.join('\n')}${signatureHtml}
   </body>
 </html>`
 }
