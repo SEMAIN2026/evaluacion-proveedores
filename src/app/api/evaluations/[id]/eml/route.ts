@@ -194,6 +194,13 @@ function buildEml(p: EmlParts): string {
   // ---- Part 1: multipart/alternative (text/plain + text/html) ----
   parts.push(`--${outerBoundary}`)
   parts.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`)
+  // CRITICAL: a blank line here separates the headers of the
+  // multipart/alternative body-part from its body (which begins with
+  // --altBoundary). Without this blank line, Outlook fails to parse
+  // the nested multipart structure and renders the entire .eml body
+  // (boundaries, sub-headers, raw HTML) as plain text — AND inserts
+  // the user's signature at the top instead of at the end.
+  parts.push('')
 
   // 1a. text/plain
   parts.push(`--${altBoundary}`)
