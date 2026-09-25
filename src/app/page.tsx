@@ -43,6 +43,7 @@ import {
   Calendar,
   X,
   UserPlus,
+  FileSpreadsheet,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -315,6 +316,21 @@ export default function Home() {
                     Quitar filtro
                   </Button>
                 )}
+                {/* Export Excel of the currently-selected temporada (or all
+                    months if monthFilter === 'ALL'). The endpoint defaults
+                    to the most recent month when no period is given. */}
+                <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700 shrink-0">
+                  <a
+                    href={monthFilter !== 'ALL'
+                      ? `/api/evaluations/export-season?period=${monthFilter}`
+                      : '/api/evaluations/export-season'}
+                    download
+                    title="Descargar un Excel con todas las evaluaciones de la temporada seleccionada"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 mr-1.5" />
+                    {monthFilter !== 'ALL' ? 'Exportar Excel (temporada)' : 'Exportar Excel'}
+                  </a>
+                </Button>
               </div>
             </div>
 

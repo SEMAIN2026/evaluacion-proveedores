@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     "sharp",
     "@react-pdf/renderer",
     "@libsql/client",
+    "exceljs",
   ],
 };
 

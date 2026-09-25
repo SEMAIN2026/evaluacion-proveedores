@@ -15,8 +15,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
-  Loader2, Mail, Copy, Download, CheckCircle2, AlertCircle,
-  FileText, Image as ImageIcon, MessageCircle, Phone, FileDown,
+  Mail, Copy, CheckCircle2, AlertCircle,
+  FileText, Image as ImageIcon, MessageCircle, Phone, Send,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Evaluation } from '@/lib/evaluations'
@@ -27,9 +27,7 @@ interface Props {
   onOpenChange: (open: boolean) => void
   evaluador: string
   cargo: string
-  /** Fired after the user downloads an EML OR opens WhatsApp for this ev.
-   *  The backend has already marked the row as enviado; this is so the
-   *  parent can refresh its state / show the green badge. */
+  /** Fired after the user opens Outlook (mailto) OR WhatsApp for this ev. */
   onSent?: (tipo: 'EML' | 'WHATSAPP') => void
 }
 
@@ -38,8 +36,6 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
   const [body, setBody] = useState('')
   const [to, setTo] = useState('')
   const [telefono, setTelefono] = useState('')
-  const [downloading, setDownloading] = useState(false)
-  const [downloaded, setDownloaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -49,7 +45,6 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
       setTelefono(ev.telefono || '')
       setSubject(`Evaluación de Proveedor - ${ev.proveedor} | Calificación: ${ev.calificacion.toFixed(1)} (${ev.clasificacion})`)
       setBody(buildDefaultBody(ev, evaluador, cargo))
-      setDownloaded(false)
       setError(null)
     }
   }, [ev, evaluador, cargo])
@@ -67,56 +62,28 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
     } catch {}
   }
 
-  /** Normalize a phone number to wa.me format: digits only, with country code. */
-  const buildWhatsAppHref = (rawPhone: string, message: string): string => {
-    // Strip everything except digits, but keep a leading "+" prefix
-    let digits = rawPhone.replace(/[^\d]/g, '')
-    // If it doesn't start with country code (Mexico default = 52), prepend it.
-    if (digits.length === 10) digits = '52' + digits
-    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+  /** Build a mailto: URL — opens Outlook (or whatever the user's default
+   *  mail client is) with a brand-new compose window. No "Reply All"
+   *  confusion because mailto always creates a NEW message. The user
+   *  only needs to attach the PDF + chart files (downloaded with the
+   *  buttons shown in the modal) and click Send. */
+  const buildMailtoHref = (toAddr: string, subject: string, body: string): string => {
+    const params = new URLSearchParams()
+    if (toAddr.trim()) params.set('to', toAddr.trim())
+    params.set('subject', subject)
+    params.set('body', body)
+    // Replace + with %20 and \n with \r\n for proper line breaks in Outlook
+    return `mailto:?${params
+      .toString()
+      .replace(/\+/g, '%20')
+      .replace(/%0A/g, '%0D%0A')}`
   }
 
-  /** Download the .eml file (with PDF + chart attachments embedded). */
-  const handleDownloadEml = async () => {
-    if (!to.trim()) {
-      setError('Agrega un correo de destino para el EML.')
-      return
-    }
-    setDownloading(true)
-    setError(null)
-    setDownloaded(false)
-    try {
-      // Only send what the backend needs: to, subject, body. The From
-      // address is hardcoded server-side (compras@semain.com.mx) so the
-      // frontend can't accidentally override it back to the wrong one.
-      const params = new URLSearchParams({ to, subject, body })
-      const url = `/api/evaluations/${ev.id}/eml?${params.toString()}`
-      // Use fetch to get the blob so we can trigger a download with the right filename
-      const res = await fetch(url, { cache: 'no-store' })
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}))
-        throw new Error(j.error || `HTTP ${res.status}`)
-      }
-      const blob = await res.blob()
-      // Force download
-      const a = document.createElement('a')
-      const objUrl = URL.createObjectURL(blob)
-      a.href = objUrl
-      a.download = `evaluacion-${ev.proveedor.replace(/[^\w\-]+/g, '_')}.eml`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(objUrl)
-      setDownloaded(true)
-      // Notify parent so the green "Enviado" badge appears on the card.
-      // The backend already marked the row as enviado via the EML endpoint,
-      // but we call onSent so the parent refreshes its local state.
-      onSent?.('EML')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al generar EML')
-    } finally {
-      setDownloading(false)
-    }
+  /** Normalize a phone number to wa.me format: digits only, with country code. */
+  const buildWhatsAppHref = (rawPhone: string, message: string): string => {
+    let digits = rawPhone.replace(/[^\d]/g, '')
+    if (digits.length === 10) digits = '52' + digits
+    return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
   }
 
   return (
@@ -128,8 +95,8 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
             Enviar evaluación a {ev.proveedor}
           </DialogTitle>
           <DialogDescription>
-            El mensaje se generará con el <strong>PDF de evaluación</strong> y la <strong>gráfica
-            comparativa</strong> incluidos. Solo se admiten EML (descarga para tu cliente de correo) o WhatsApp.
+            Se abre tu Outlook con destinatario, asunto y mensaje cargados. Solo tienes que
+            adjuntar el PDF y la gráfica (descárgalos con los botones de abajo) y pulsar Enviar.
           </DialogDescription>
         </DialogHeader>
 
@@ -140,11 +107,11 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
           <Stat label="Fecha" value={formatDate(ev.fecha)} />
         </div>
 
-        <Tabs defaultValue="eml" className="w-full">
+        <Tabs defaultValue="email" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="eml">
-              <FileDown className="w-4 h-4 mr-2" />
-              Descargar EML
+            <TabsTrigger value="email">
+              <Mail className="w-4 h-4 mr-2" />
+              Correo (Outlook)
             </TabsTrigger>
             <TabsTrigger value="whatsapp">
               <MessageCircle className="w-4 h-4 mr-2" />
@@ -152,32 +119,32 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
             </TabsTrigger>
           </TabsList>
 
-          {/* ---------- Option A: Download EML ---------- */}
-          <TabsContent value="eml" className="space-y-3 mt-3">
+          {/* ---------- Option A: Open Outlook (mailto) ---------- */}
+          <TabsContent value="email" className="space-y-3 mt-3">
             <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
               <p className="font-semibold mb-1 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
-                ¿Cómo funciona el EML?
+                ¿Cómo funciona?
               </p>
               <ol className="list-decimal list-inside space-y-0.5 text-emerald-800 text-[13px]">
-                <li>Revisa los campos <strong>Para</strong>, <strong>Asunto</strong> y <strong>Mensaje</strong> abajo.</li>
-                <li>Pulsa <strong>&ldquo;Descargar EML&rdquo;</strong>. Se descargará un archivo <code>.eml</code> con el PDF y la gráfica ya adjuntos.</li>
-                <li>Doble clic en el archivo descargado: se abrirá en Outlook, Thunderbird, Apple Mail, Windows Mail o tu cliente de correo predeterminado.</li>
-                <li>Revisa el contenido y pulsa <strong>Enviar</strong> en tu correo.</li>
+                <li>Descarga el <strong>PDF</strong> y la <strong>gráfica</strong> con los botones verdes de abajo.</li>
+                <li>Revisa los campos <strong>Para</strong>, <strong>Asunto</strong> y <strong>Mensaje</strong>.</li>
+                <li>Pulsa <strong>&ldquo;Abrir en Outlook&rdquo;</strong>. Se abrirá Outlook con un correo nuevo ya cargado (sin nada de &ldquo;Responder a todos&rdquo;).</li>
+                <li>Adjunta los dos archivos descargados (PDF + gráfica) y pulsa <strong>Enviar</strong>.</li>
               </ol>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm" variant="default" className="bg-slate-900 hover:bg-slate-800">
+              <Button asChild size="sm" className="bg-emerald-700 hover:bg-emerald-800">
                 <a href={`/api/evaluations/${ev.id}/pdf?withChart=1`} target="_blank" rel="noopener noreferrer" download>
                   <FileText className="w-4 h-4 mr-2" />
-                  Ver PDF
+                  Descargar PDF
                 </a>
               </Button>
-              <Button asChild size="sm" variant="default" className="bg-emerald-700 hover:bg-emerald-800">
+              <Button asChild size="sm" className="bg-emerald-700 hover:bg-emerald-800">
                 <a href={`/api/evaluations/${ev.id}/chart`} target="_blank" rel="noopener noreferrer" download>
                   <ImageIcon className="w-4 h-4 mr-2" />
-                  Ver gráfica
+                  Descargar gráfica
                 </a>
               </Button>
             </div>
@@ -193,7 +160,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
               {!hasEmail && (
                 <p className="text-xs text-rose-600 flex items-center gap-1">
                   <AlertCircle className="w-3 h-3" />
-                  Este proveedor no tenía correo guardado. Escríbelo aquí para incluirlo en el EML.
+                  Este proveedor no tenía correo guardado. Escríbelo aquí para incluirlo en el correo.
                 </p>
               )}
             </div>
@@ -215,32 +182,35 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
               <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="font-mono text-xs" />
             </div>
 
-            {downloaded && (
-              <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800 flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-semibold">EML descargado correctamente</p>
-                  <p className="text-xs mt-0.5">
-                    Ábrelo con doble clic desde tu carpeta de descargas. Se abrirá en tu cliente de correo con el PDF y la gráfica adjuntos, listo para enviar.
-                  </p>
-                </div>
-              </div>
-            )}
             {error && (
               <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">{error}</div>
             )}
 
             <DialogFooter className="mt-2">
-              <Button
-                onClick={handleDownloadEml}
-                disabled={downloading || !to.trim()}
-                className="bg-emerald-600 hover:bg-emerald-700"
-              >
-                {downloading ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generando EML…</>
-                ) : (
-                  <><FileDown className="w-4 h-4 mr-2" /> Descargar EML</>
+              <Button asChild
+                disabled={!to.trim()}
+                className={cn(
+                  'bg-emerald-600 hover:bg-emerald-700',
+                  !to.trim() && 'opacity-50 pointer-events-none'
                 )}
+              >
+                <a
+                  href={to.trim() ? buildMailtoHref(to, subject, body) : '#'}
+                  onClick={() => {
+                    if (to.trim()) {
+                      // Mark the evaluation as enviado (via mailto = EML channel)
+                      fetch(`/api/evaluations/${ev.id}/mark-sent`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tipo: 'EML' }),
+                      }).catch(() => {})
+                      onSent?.('EML')
+                    }
+                  }}
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Abrir en Outlook
+                </a>
               </Button>
             </DialogFooter>
           </TabsContent>
@@ -260,13 +230,13 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button asChild size="sm" variant="default" className="bg-slate-900 hover:bg-slate-800">
+              <Button asChild size="sm" className="bg-slate-900 hover:bg-slate-800">
                 <a href={`/api/evaluations/${ev.id}/pdf?withChart=1`} target="_blank" rel="noopener noreferrer" download>
                   <FileText className="w-4 h-4 mr-2" />
                   Descargar PDF
                 </a>
               </Button>
-              <Button asChild size="sm" variant="default" className="bg-emerald-700 hover:bg-emerald-800">
+              <Button asChild size="sm" className="bg-emerald-700 hover:bg-emerald-800">
                 <a href={`/api/evaluations/${ev.id}/chart`} target="_blank" rel="noopener noreferrer" download>
                   <ImageIcon className="w-4 h-4 mr-2" />
                   Descargar gráfica
@@ -324,9 +294,6 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
                   rel="noopener noreferrer"
                   onClick={() => {
                     if (telefono.trim()) {
-                      // The user clicked "Abrir WhatsApp" — mark this evaluation
-                      // as enviado via WhatsApp so the green badge appears.
-                      // Use fetch in the background; don't block navigation.
                       fetch(`/api/evaluations/${ev.id}/mark-sent`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -370,7 +337,7 @@ RESUMEN DE LA EVALUACIÓN
 
 Les adjuntamos:
 1. El reporte completo en PDF con el detalle por criterio.
-2. Una gráfica comparativa que muestra la posición de ${ev.proveedor} frente a los demás proveedores evaluados.
+2. Una gráfica comparativa que muestra la posición de ${ev.proveedor} frente a los demás proveedores evaluados en el mismo período.
 
 ${ev.observaciones && ev.observaciones.trim() !== ''
     ? `OBSERVACIONES:\n${ev.observaciones}\n`
