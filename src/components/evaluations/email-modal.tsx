@@ -15,8 +15,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import {
-  Mail, Copy, CheckCircle2, AlertCircle,
-  FileText, Image as ImageIcon, MessageCircle, Phone, Send,
+  Loader2, Mail, Copy, Download, CheckCircle2, AlertCircle,
+  FileText, Image as ImageIcon, MessageCircle, Phone, Send, FileDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Evaluation } from '@/lib/evaluations'
@@ -27,7 +27,7 @@ interface Props {
   onOpenChange: (open: boolean) => void
   evaluador: string
   cargo: string
-  /** Fired after the user opens Outlook (mailto) OR WhatsApp for this ev. */
+  /** Fired after the user downloads an EML OR opens Outlook/WhatsApp. */
   onSent?: (tipo: 'EML' | 'WHATSAPP') => void
 }
 
@@ -36,6 +36,8 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
   const [body, setBody] = useState('')
   const [to, setTo] = useState('')
   const [telefono, setTelefono] = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const [emlDownloaded, setEmlDownloaded] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
@@ -45,6 +47,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
       setTelefono(ev.telefono || '')
       setSubject(`Evaluación de Proveedor - ${ev.proveedor} | Calificación: ${ev.calificacion.toFixed(1)} (${ev.clasificacion})`)
       setBody(buildDefaultBody(ev, evaluador, cargo))
+      setEmlDownloaded(false)
       setError(null)
     }
   }, [ev, evaluador, cargo])
@@ -62,28 +65,65 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
     } catch {}
   }
 
-  /** Build a mailto: URL — opens Outlook (or whatever the user's default
-   *  mail client is) with a brand-new compose window. No "Reply All"
-   *  confusion because mailto always creates a NEW message. The user
-   *  only needs to attach the PDF + chart files (downloaded with the
-   *  buttons shown in the modal) and click Send. */
+  /** mailto: link — opens Outlook with a brand-new compose window.
+   *  NO 'Reply All' confusion (mailto always = new message).
+   *  User still has to attach PDF + chart manually. */
   const buildMailtoHref = (toAddr: string, subject: string, body: string): string => {
     const params = new URLSearchParams()
     if (toAddr.trim()) params.set('to', toAddr.trim())
     params.set('subject', subject)
     params.set('body', body)
-    // Replace + with %20 and \n with \r\n for proper line breaks in Outlook
     return `mailto:?${params
       .toString()
       .replace(/\+/g, '%20')
       .replace(/%0A/g, '%0D%0A')}`
   }
 
-  /** Normalize a phone number to wa.me format: digits only, with country code. */
+  /** Normalize a phone number to wa.me format. */
   const buildWhatsAppHref = (rawPhone: string, message: string): string => {
     let digits = rawPhone.replace(/[^\d]/g, '')
     if (digits.length === 10) digits = '52' + digits
     return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`
+  }
+
+  /** Download the .eml file — has the PDF + chart embedded as base64
+   *  attachments. Open it with double-click → Outlook opens a draft
+   *  with everything already loaded. Just hit Send. */
+  const handleDownloadEml = async () => {
+    if (!to.trim()) {
+      setError('Agrega un correo de destino.')
+      return
+    }
+    setDownloading(true)
+    setError(null)
+    setEmlDownloaded(false)
+    try {
+      const params = new URLSearchParams({ to, subject, body })
+      const url = `/api/evaluations/${ev.id}/eml?${params.toString()}`
+      const res = await fetch(url, { cache: 'no-store' })
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}))
+        throw new Error(j.error || `HTTP ${res.status}`)
+      }
+      const blob = await res.blob()
+      // Force download with a sensible filename
+      const a = document.createElement('a')
+      const objUrl = URL.createObjectURL(blob)
+      a.href = objUrl
+      a.download = `evaluacion-${ev.proveedor.replace(/[^\w\-]+/g, '_')}.eml`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(objUrl)
+      setEmlDownloaded(true)
+      // Backend already marked ev.enviado=1; refresh parent state so the
+      // green "Enviado" badge appears immediately.
+      onSent?.('EML')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al generar EML')
+    } finally {
+      setDownloading(false)
+    }
   }
 
   return (
@@ -95,8 +135,9 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
             Enviar evaluación a {ev.proveedor}
           </DialogTitle>
           <DialogDescription>
-            Se abre tu Outlook con destinatario, asunto y mensaje cargados. Solo tienes que
-            adjuntar el PDF y la gráfica (descárgalos con los botones de abajo) y pulsar Enviar.
+            Dos opciones: <strong>EML</strong> descarga un archivo con PDF + gráfica ya adjuntos
+            (solo ábrelo y pulsa Enviar). <strong>Outlook</strong> abre tu Outlook con el texto
+            cargado, pero adjuntas los archivos a mano.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,11 +148,15 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
           <Stat label="Fecha" value={formatDate(ev.fecha)} />
         </div>
 
-        <Tabs defaultValue="email" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="email">
-              <Mail className="w-4 h-4 mr-2" />
-              Correo (Outlook)
+        <Tabs defaultValue="eml" className="w-full">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="eml">
+              <FileDown className="w-4 h-4 mr-2" />
+              EML (con adjuntos)
+            </TabsTrigger>
+            <TabsTrigger value="outlook">
+              <Send className="w-4 h-4 mr-2" />
+              Abrir Outlook
             </TabsTrigger>
             <TabsTrigger value="whatsapp">
               <MessageCircle className="w-4 h-4 mr-2" />
@@ -119,19 +164,99 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
             </TabsTrigger>
           </TabsList>
 
-          {/* ---------- Option A: Open Outlook (mailto) ---------- */}
-          <TabsContent value="email" className="space-y-3 mt-3">
+          {/* ---------- Option A: Download EML (attachments embedded) ---------- */}
+          <TabsContent value="eml" className="space-y-3 mt-3">
             <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
               <p className="font-semibold mb-1 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4" />
                 ¿Cómo funciona?
               </p>
               <ol className="list-decimal list-inside space-y-0.5 text-emerald-800 text-[13px]">
-                <li>Descarga el <strong>PDF</strong> y la <strong>gráfica</strong> con los botones verdes de abajo.</li>
-                <li>Revisa los campos <strong>Para</strong>, <strong>Asunto</strong> y <strong>Mensaje</strong>.</li>
-                <li>Pulsa <strong>&ldquo;Abrir en Outlook&rdquo;</strong>. Se abrirá Outlook con un correo nuevo ya cargado (sin nada de &ldquo;Responder a todos&rdquo;).</li>
-                <li>Adjunta los dos archivos descargados (PDF + gráfica) y pulsa <strong>Enviar</strong>.</li>
+                <li>Revisa los campos <strong>Para</strong>, <strong>Asunto</strong> y <strong>Mensaje</strong> abajo.</li>
+                <li>Pulsa <strong>&ldquo;Descargar EML&rdquo;</strong>. Se descarga un archivo <code>.eml</code> con el <strong>PDF + gráfica ya adjuntos</strong>.</li>
+                <li>Doble clic en el archivo descargado. Outlook lo abre como un <strong>correo nuevo</strong> (con botón Enviar, no &ldquo;Responder a todos&rdquo;) — el destinatario, asunto, mensaje y adjuntos ya están cargados.</li>
+                <li>Pulsa <strong>Enviar</strong>. Listo.</li>
               </ol>
+            </div>
+
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-wide text-slate-600">Para (correo del proveedor)</Label>
+              <Input
+                type="email"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                placeholder={ev.correo || 'proveedor@correo.com'}
+              />
+              {!hasEmail && (
+                <p className="text-xs text-rose-600 flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  Este proveedor no tenía correo guardado. Escríbelo aquí para incluirlo en el EML.
+                </p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-wide text-slate-600">Asunto</Label>
+              <Input value={subject} onChange={(e) => setSubject(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs uppercase tracking-wide text-slate-600">Mensaje</Label>
+                <Button size="sm" variant="ghost" onClick={handleCopyBody} className="h-6 text-xs">
+                  {copied ? (
+                    <><CheckCircle2 className="w-3 h-3 mr-1 text-emerald-600" /> Copiado</>
+                  ) : (
+                    <><Copy className="w-3 h-3 mr-1" /> Copiar</>
+                  )}
+                </Button>
+              </div>
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="font-mono text-xs" />
+            </div>
+
+            {emlDownloaded && (
+              <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-800 flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
+                <div>
+                  <p className="font-semibold">EML descargado con PDF + gráfica ya adjuntos</p>
+                  <p className="text-xs mt-0.5">
+                    Ábrelo con doble clic desde tu carpeta de descargas. Outlook lo abre como correo
+                    nuevo (botón Enviar). Solo revisa y pulsa Enviar.
+                  </p>
+                </div>
+              </div>
+            )}
+            {error && (
+              <div className="rounded-md bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">{error}</div>
+            )}
+
+            <DialogFooter className="mt-2">
+              <Button
+                onClick={handleDownloadEml}
+                disabled={downloading || !to.trim()}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                {downloading ? (
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Generando EML…</>
+                ) : (
+                  <><FileDown className="w-4 h-4 mr-2" /> Descargar EML (con adjuntos)</>
+                )}
+              </Button>
+            </DialogFooter>
+          </TabsContent>
+
+          {/* ---------- Option B: Open Outlook (mailto, no attachments) ---------- */}
+          <TabsContent value="outlook" className="space-y-3 mt-3">
+            <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+              <p className="font-semibold mb-1 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4" />
+                Nota importante
+              </p>
+              <p className="text-amber-800 text-[13px]">
+                Esta opción abre Outlook con destinatario, asunto y mensaje cargados, pero
+                <strong> NO adjunta los archivos automáticamente</strong> — el estándar mailto no
+                lo permite. Tendrás que descargar el PDF + la gráfica con los botones verdes y
+                adjuntarlos a mano en Outlook. Si quieres todo automático, usa la pestaña
+                <strong> &ldquo;EML (con adjuntos)&rdquo;</strong> de la izquierda.
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -157,12 +282,6 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
                 onChange={(e) => setTo(e.target.value)}
                 placeholder={ev.correo || 'proveedor@correo.com'}
               />
-              {!hasEmail && (
-                <p className="text-xs text-rose-600 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  Este proveedor no tenía correo guardado. Escríbelo aquí para incluirlo en el correo.
-                </p>
-              )}
             </div>
             <div className="space-y-2">
               <Label className="text-xs uppercase tracking-wide text-slate-600">Asunto</Label>
@@ -179,7 +298,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
                   )}
                 </Button>
               </div>
-              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={12} className="font-mono text-xs" />
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="font-mono text-xs" />
             </div>
 
             {error && (
@@ -190,7 +309,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
               <Button asChild
                 disabled={!to.trim()}
                 className={cn(
-                  'bg-emerald-600 hover:bg-emerald-700',
+                  'bg-sky-600 hover:bg-sky-700',
                   !to.trim() && 'opacity-50 pointer-events-none'
                 )}
               >
@@ -198,7 +317,6 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
                   href={to.trim() ? buildMailtoHref(to, subject, body) : '#'}
                   onClick={() => {
                     if (to.trim()) {
-                      // Mark the evaluation as enviado (via mailto = EML channel)
                       fetch(`/api/evaluations/${ev.id}/mark-sent`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -215,7 +333,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
             </DialogFooter>
           </TabsContent>
 
-          {/* ---------- Option B: WhatsApp ---------- */}
+          {/* ---------- Option C: WhatsApp ---------- */}
           <TabsContent value="whatsapp" className="space-y-3 mt-3">
             <div className="rounded-md bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-900">
               <p className="font-semibold mb-1 flex items-center gap-2">
@@ -224,7 +342,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
               </p>
               <ol className="list-decimal list-inside space-y-0.5 text-emerald-800 text-[13px]">
                 <li>Verifica el <strong>número</strong> del proveedor abajo (formato internacional, ej. <code>+52 614 123 4567</code>).</li>
-                <li>Pulsa <strong>&ldquo;Abrir WhatsApp&rdquo;</strong>. Se abrirá WhatsApp Web o la app con el mensaje ya cargado.</li>
+                <li>Pulsa <strong>&ldquo;Abrir WhatsApp&rdquo;</strong>. Se abre WhatsApp Web o la app con el mensaje ya cargado.</li>
                 <li>Descarga el PDF y la gráfica con los botones y <strong>adjúntalos manualmente</strong> en el chat antes de enviar.</li>
               </ol>
             </div>
@@ -273,7 +391,7 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
                   )}
                 </Button>
               </div>
-              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} className="font-mono text-xs" />
+              <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} className="font-mono text-xs" />
             </div>
 
             {error && (
@@ -358,3 +476,4 @@ function formatDate(s: string): string {
   }
   return s
 }
+
