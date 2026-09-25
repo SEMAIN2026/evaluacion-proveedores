@@ -115,10 +115,28 @@ function buildEml(p: EmlParts): string {
   const boundary = genBoundary()
 
   // ---- Headers ----
-  // EXACTLY these 5 headers. No Date. No Message-ID. No X-*.
+  // The exact set that makes Outlook open the .eml as a NEW DRAFT with
+  // the "Send" button (not as a received message with "Reply All"):
+  //
+  //   - X-Unsent: 1
+  //     This is THE magic header. It's a Microsoft Office extension
+  //     (not in any RFC) that tells Outlook "this is an unsent draft,
+  //     show it in compose mode". Without it, Outlook ALWAYS shows
+  //     .eml files in read mode with the Reply / Reply-All toolbar —
+  //     no matter what other headers are or aren't present.
+  //     Works in Outlook 2016, 2019, 365, and Outlook on the Web.
+  //
+  //   - From: <user's mailbox>
+  //     Required so Outlook knows which account "owns" the draft.
+  //
+  //   - To / Subject / MIME-Version / Content-Type: standard.
+  //
+  //   - Date / Message-ID / X-Mailer / Auto-Submitted: omitted on
+  //     purpose — Outlook will fill them in when the user hits Send.
   const headers: string[] = [
     `From: ${FROM_EMAIL}`,
     `To: ${p.to}`,
+    `X-Unsent: 1`,
   ]
   if (p.cc) headers.push(`Cc: ${p.cc}`)
   headers.push(`Subject: ${encodeHeader(p.subject)}`)
