@@ -261,12 +261,13 @@ function buildChartSVG({ rows, highlightId, logoBase64, periodLabel, targetNombr
   if (logoBase64) {
     header += `<image href="${logoBase64}" x="${padL}" y="18" height="50" preserveAspectRatio="xMidYMid meet"/>`
   }
-  // Title (LEFT, below the logo)
+  // Title (LEFT, below the logo) — with generous vertical separation
+  // so the subtitle never looks "glued" to the title.
   header += `
-    <text x="${padL}" y="92" font-family="Carlito" font-size="22" font-weight="700" fill="${SEMAIN_DARK}">
+    <text x="${padL}" y="88" font-family="Carlito" font-size="22" font-weight="700" fill="${SEMAIN_DARK}">
       Comparativo de Evaluación de Proveedores
     </text>
-    <text x="${padL}" y="115" font-family="Carlito" font-size="13" fill="${SEMAIN_GREEN_DARK}">
+    <text x="${padL}" y="114" font-family="Carlito" font-size="13" fill="${SEMAIN_GREEN_DARK}">
       Posición de ${escapeXml(truncate(target?.proveedor ?? '', 60))} frente a ${n - 1} proveedor${n - 1 === 1 ? '' : 'es'} de la misma temporada
     </text>
   `
