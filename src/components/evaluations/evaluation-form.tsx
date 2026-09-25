@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CRITERIA, classify, type Evaluation } from '@/lib/evaluations'
-import { Save, RotateCcw, Star } from 'lucide-react'
+import { Save, RotateCcw, Star, Search, Mail, Phone, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useSuppliers } from './use-suppliers'
 
 interface Props {
   initial?: Evaluation | null
@@ -22,6 +23,7 @@ const today = () => new Date().toISOString().slice(0, 10)
 const EMPTY = {
   proveedor: '',
   correo: '',
+  telefono: '',
   fecha: today(),
   c1: 0, c2: 0, c3: 0, c4: 0, c5: 0,
   c6: 0, c7: 0, c8: 0, c9: 0, c10: 0,
@@ -31,15 +33,24 @@ const EMPTY = {
 }
 
 export function EvaluationForm({ initial, onSave, onClear }: Props) {
+  const { suppliers, loading: suppliersLoading, search } = useSuppliers()
   const [form, setForm] = useState<Record<string, string | number>>(EMPTY)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Autocomplete state for the supplier field
+  const [showSuggest, setShowSuggest] = useState(false)
+  const [highlightIdx, setHighlightIdx] = useState(-1)
+  const [userTyped, setUserTyped] = useState(false)
+  const proveedorRef = useRef<HTMLInputElement>(null)
+  const suggestRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (initial) {
       setForm({
         proveedor: initial.proveedor,
         correo: initial.correo || '',
+        telefono: initial.telefono || '',
         fecha: initial.fecha,
         c1: initial.c1, c2: initial.c2, c3: initial.c3, c4: initial.c4, c5: initial.c5,
         c6: initial.c6, c7: initial.c7, c8: initial.c8, c9: initial.c9, c10: initial.c10,
@@ -48,8 +59,10 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
         cargo: initial.cargo,
         id: initial.id,
       })
+      setUserTyped(false)
     } else {
       setForm(EMPTY)
+      setUserTyped(false)
     }
   }, [initial])
 
@@ -58,8 +71,55 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
   const pct = (total / 40) * 100
   const cls = classify(pct)
 
+  const proveedorStr = String(form.proveedor || '')
+  const suggestions = useMemo(() => {
+    if (!userTyped || !proveedorStr.trim()) return []
+    return search(proveedorStr)
+  }, [userTyped, proveedorStr, search])
+
   const handleScore = (key: string, val: number) => {
     setForm((f) => ({ ...f, [key]: val }))
+  }
+
+  const handleProveedorChange = (value: string) => {
+    setForm((f) => ({ ...f, proveedor: value }))
+    setUserTyped(true)
+    setShowSuggest(true)
+    setHighlightIdx(-1)
+  }
+
+  const selectSupplier = (nombre: string, correo: string | null, telefono: string | null) => {
+    setForm((f) => ({
+      ...f,
+      proveedor: nombre,
+      // Only overwrite correo/telefono if the user has not typed anything yet, OR
+      // if the field is currently empty — this avoids wiping out edits when picking a
+      // suggestion whose supplier info is incomplete.
+      correo: f.correo ? String(f.correo) : (correo || ''),
+      telefono: f.telefono ? String(f.telefono) : (telefono || ''),
+    }))
+    setShowSuggest(false)
+    setHighlightIdx(-1)
+    setUserTyped(false)
+  }
+
+  const handleProveedorKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggest || suggestions.length === 0) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setHighlightIdx((i) => Math.min(i + 1, suggestions.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightIdx((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      if (highlightIdx >= 0 && highlightIdx < suggestions.length) {
+        e.preventDefault()
+        const s = suggestions[highlightIdx]
+        selectSupplier(s.nombre, s.correo, s.telefono)
+      }
+    } else if (e.key === 'Escape') {
+      setShowSuggest(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -74,6 +134,7 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
         id: form.id ? String(form.id) : undefined,
         proveedor: String(form.proveedor).trim(),
         correo: form.correo ? String(form.correo).trim() : '',
+        telefono: form.telefono ? String(form.telefono).trim() : '',
         fecha: String(form.fecha),
         c1: Number(form.c1), c2: Number(form.c2), c3: Number(form.c3),
         c4: Number(form.c4), c5: Number(form.c5), c6: Number(form.c6),
@@ -100,6 +161,18 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
     onClear?.()
   }
 
+  // Close the suggestion box on outside click
+  useEffect(() => {
+    if (!showSuggest) return
+    const onClick = (e: MouseEvent) => {
+      if (suggestRef.current && !suggestRef.current.contains(e.target as Node)) {
+        setShowSuggest(false)
+      }
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [showSuggest])
+
   return (
     <Card className="w-full">
       <CardHeader className="bg-slate-50 border-b">
@@ -115,17 +188,83 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
       <CardContent className="pt-6 space-y-6">
         {/* Supplier info */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="space-y-2">
+          {/* Proveedor with autocomplete */}
+          <div className="space-y-2 relative" ref={suggestRef}>
             <Label htmlFor="proveedor" className="text-xs uppercase tracking-wide text-slate-600">
               Nombre del proveedor *
             </Label>
-            <Input
-              id="proveedor"
-              value={String(form.proveedor)}
-              onChange={(e) => setForm((f) => ({ ...f, proveedor: e.target.value }))}
-              placeholder="Ej. CNC Herramientas Chihuahua"
-            />
+            <div className="relative">
+              <Input
+                ref={proveedorRef}
+                id="proveedor"
+                value={proveedorStr}
+                onChange={(e) => handleProveedorChange(e.target.value)}
+                onFocus={() => {
+                  if (proveedorStr.trim()) {
+                    setShowSuggest(true)
+                    setUserTyped(true)
+                  }
+                }}
+                onKeyDown={handleProveedorKeyDown}
+                placeholder="Escribe para buscar proveedores ya evaluados…"
+                autoComplete="off"
+                className="pr-9"
+              />
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            </div>
+            {showSuggest && userTyped && proveedorStr.trim() && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
+                {suppliersLoading && (
+                  <div className="px-3 py-2 text-xs text-slate-500">Cargando proveedores…</div>
+                )}
+                {!suppliersLoading && suggestions.length === 0 && (
+                  <div className="px-3 py-2 text-xs text-slate-500">
+                    No hay proveedores previos con ese nombre. Se creará uno nuevo al guardar.
+                  </div>
+                )}
+                {suggestions.map((s, idx) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => selectSupplier(s.nombre, s.correo, s.telefono)}
+                    className={cn(
+                      'w-full text-left px-3 py-2 flex items-start justify-between gap-2 text-sm hover:bg-emerald-50 transition-colors',
+                      highlightIdx === idx && 'bg-emerald-50'
+                    )}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium text-slate-900 truncate">{s.nombre}</div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-0.5 text-xs text-slate-500">
+                        {s.correo ? (
+                          <span className="flex items-center gap-1 truncate max-w-[180px]">
+                            <Mail className="w-3 h-3" />
+                            {s.correo}
+                          </span>
+                        ) : (
+                          <span className="text-rose-500">sin correo</span>
+                        )}
+                        {s.telefono && (
+                          <span className="flex items-center gap-1">
+                            <Phone className="w-3 h-3" />
+                            {s.telefono}
+                          </span>
+                        )}
+                        <span className="text-slate-400">
+                          · {s.evaluaciones_count} eval{s.evaluaciones_count === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                    </div>
+                    {highlightIdx === idx && (
+                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-1" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
+
+          {/* Correo */}
           <div className="space-y-2">
             <Label htmlFor="correo" className="text-xs uppercase tracking-wide text-slate-600">
               Correo electrónico
@@ -138,6 +277,22 @@ export function EvaluationForm({ initial, onSave, onClear }: Props) {
               placeholder="ventas@proveedor.com"
             />
           </div>
+
+          {/* Telefono */}
+          <div className="space-y-2">
+            <Label htmlFor="telefono" className="text-xs uppercase tracking-wide text-slate-600">
+              Teléfono / WhatsApp
+            </Label>
+            <Input
+              id="telefono"
+              type="tel"
+              value={String(form.telefono)}
+              onChange={(e) => setForm((f) => ({ ...f, telefono: e.target.value }))}
+              placeholder="Ej. +52 614 123 4567"
+            />
+          </div>
+
+          {/* Fecha */}
           <div className="space-y-2">
             <Label htmlFor="fecha" className="text-xs uppercase tracking-wide text-slate-600">
               Fecha de evaluación

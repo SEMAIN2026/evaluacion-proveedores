@@ -13,6 +13,7 @@ import {
   TrendingDown,
   Minus,
   Calendar,
+  Phone,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,8 @@ interface Props {
 export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEmail }: Props) {
   const diff = avg != null ? ev.calificacion - avg : 0
   const hasEmail = !!ev.correo
+  const hasPhone = !!ev.telefono
+  const canSend = hasEmail || hasPhone
 
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow border-slate-200">
@@ -57,9 +60,18 @@ export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEma
                 <Calendar className="w-3 h-3" />
                 {formatDate(ev.fecha)}
                 {hasEmail ? (
-                  <span className="ml-1 truncate max-w-[200px]">· {ev.correo}</span>
+                  <span className="ml-1 truncate max-w-[200px] flex items-center gap-0.5">
+                    <Mail className="w-3 h-3 shrink-0" />
+                    {ev.correo}
+                  </span>
                 ) : (
                   <span className="ml-1 text-rose-500">· sin correo</span>
+                )}
+                {hasPhone && (
+                  <span className="ml-1 truncate max-w-[160px] flex items-center gap-0.5">
+                    <Phone className="w-3 h-3 shrink-0" />
+                    {ev.telefono}
+                  </span>
                 )}
               </div>
             </div>
@@ -162,17 +174,21 @@ export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEma
           <Button
             size="sm"
             onClick={() => onSendEmail(ev)}
-            disabled={!hasEmail}
+            disabled={!canSend}
             className={cn(
               'justify-center',
-              hasEmail
+              canSend
                 ? 'bg-emerald-600 hover:bg-emerald-700'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             )}
-            title={hasEmail ? 'Enviar correo con evaluación y gráfica' : 'Sin correo electrónico'}
+            title={
+              canSend
+                ? `Enviar por EML o WhatsApp${hasEmail ? ' (correo)' : ''}${hasPhone ? ' (teléfono)' : ''}`
+                : 'Sin correo ni teléfono — edita la evaluación para agregar uno de los dos'
+            }
           >
             <Mail className="w-4 h-4 mr-1.5" />
-            Correo
+            Enviar
           </Button>
           <Button
             size="sm"

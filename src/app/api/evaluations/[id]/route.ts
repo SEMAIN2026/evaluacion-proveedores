@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, type Evaluation } from '@/lib/db'
+import { db, ensureSchema, type Evaluation } from '@/lib/db'
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSchema()
   const { id } = await params
   const res = await db.execute({
     sql: `SELECT * FROM evaluations WHERE id = ? LIMIT 1`,
@@ -18,6 +19,7 @@ export async function GET(
     id: String(r.id),
     proveedor: String(r.proveedor ?? ''),
     correo: r.correo ? String(r.correo) : null,
+    telefono: r.telefono ? String(r.telefono) : null,
     fecha: String(r.fecha ?? ''),
     c1: Number(r.c1 ?? 0),
     c2: Number(r.c2 ?? 0),
@@ -45,6 +47,7 @@ export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  await ensureSchema()
   const { id } = await params
   await db.execute({ sql: `DELETE FROM evaluations WHERE id = ?`, args: [id] })
   return NextResponse.json({ ok: true })

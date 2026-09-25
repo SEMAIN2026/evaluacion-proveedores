@@ -5,6 +5,7 @@ export interface Evaluation {
   id: string
   proveedor: string
   correo: string | null
+  telefono: string | null
   fecha: string
   c1: number
   c2: number
@@ -24,6 +25,15 @@ export interface Evaluation {
   cargo: string
   created_at: number
   updated_at: number
+}
+
+export interface Supplier {
+  id: string
+  nombre: string
+  correo: string | null
+  telefono: string | null
+  evaluaciones_count: number
+  ultima_evaluacion: string | null
 }
 
 // 10 evaluation criteria (Spanish, matching the original Excel template F-CAL-07 REV01)
@@ -79,6 +89,7 @@ export function rowToEvaluation(row: Record<string, unknown>): Evaluation {
     id: String(row.id),
     proveedor: String(row.proveedor ?? ''),
     correo: row.correo ? String(row.correo) : null,
+    telefono: row.telefono ? String(row.telefono) : null,
     fecha: String(row.fecha ?? ''),
     c1: Number(row.c1 ?? 0),
     c2: Number(row.c2 ?? 0),
@@ -98,5 +109,16 @@ export function rowToEvaluation(row: Record<string, unknown>): Evaluation {
     cargo: String(row.cargo ?? 'Ingeniero Calidad y Compras'),
     created_at: Number(row.created_at ?? 0),
     updated_at: Number(row.updated_at ?? 0),
+  }
+}
+
+export function rowToSupplier(row: Record<string, unknown>): Supplier {
+  return {
+    id: String(row.id),
+    nombre: String(row.nombre ?? ''),
+    correo: row.correo ? String(row.correo) : null,
+    telefono: row.telefono ? String(row.telefono) : null,
+    evaluaciones_count: Number(row.evaluaciones_count ?? 0),
+    ultima_evaluacion: row.ultima_evaluacion ? String(row.ultima_evaluacion) : null,
   }
 }

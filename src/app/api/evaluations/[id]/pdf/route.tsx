@@ -43,6 +43,7 @@ export async function GET(
     id: String(r.id),
     proveedor: String(r.proveedor ?? ''),
     correo: r.correo ? String(r.correo) : null,
+    telefono: r.telefono ? String(r.telefono) : null,
     fecha: String(r.fecha ?? ''),
     c1: Number(r.c1 ?? 0),
     c2: Number(r.c2 ?? 0),

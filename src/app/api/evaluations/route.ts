@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db, CRITERIA, classify, type Evaluation } from '@/lib/db'
+import { db, ensureSchema, CRITERIA, classify, type Evaluation } from '@/lib/db'
 
 function genId(): string {
   const d = new Date()
@@ -11,8 +11,50 @@ function genId(): string {
   return `eval-${ymd}-${rand}`
 }
 
+function genSupplierId(): string {
+  return `sup-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+/**
+ * Upsert supplier record (keyed by nombre) with the latest correo / telefono
+ * info, and bump the evaluation counter / last-evaluated date.
+ */
+async function upsertSupplier(
+  nombre: string,
+  correo: string | null,
+  telefono: string | null,
+  fecha: string,
+  isNew: boolean
+): Promise<void> {
+  const now = Date.now()
+  // If isNew: increment count; otherwise keep current count.
+  // Use a CTE to compute the new count in one shot.
+  await db.execute({
+    sql: `INSERT INTO suppliers (id, nombre, correo, telefono, evaluaciones_count, ultima_evaluacion, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(nombre) DO UPDATE SET
+           correo = COALESCE(NULLIF(excluded.correo, ''), suppliers.correo),
+           telefono = COALESCE(NULLIF(excluded.telefono, ''), suppliers.telefono),
+           evaluaciones_count = suppliers.evaluaciones_count + ?,
+           ultima_evaluacion = excluded.ultima_evaluacion,
+           updated_at = excluded.updated_at`,
+    args: [
+      genSupplierId(),
+      nombre,
+      correo,
+      telefono,
+      isNew ? 1 : 0,
+      fecha,
+      now,
+      now,
+      isNew ? 1 : 0,
+    ],
+  })
+}
+
 export async function GET() {
   try {
+    await ensureSchema()
     const res = await db.execute(
       `SELECT * FROM evaluations ORDER BY datetime(fecha) DESC, created_at DESC`
     )
@@ -20,6 +62,7 @@ export async function GET() {
       id: String(r.id),
       proveedor: String(r.proveedor ?? ''),
       correo: r.correo ? String(r.correo) : null,
+      telefono: r.telefono ? String(r.telefono) : null,
       fecha: String(r.fecha ?? ''),
       c1: Number(r.c1 ?? 0),
       c2: Number(r.c2 ?? 0),
@@ -52,6 +95,7 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    await ensureSchema()
     const body = await req.json()
     const proveedor = String(body.proveedor ?? '').trim()
     if (!proveedor) {
@@ -59,6 +103,7 @@ export async function POST(req: NextRequest) {
     }
 
     const correo = body.correo ? String(body.correo).trim() : null
+    const telefono = body.telefono ? String(body.telefono).trim() : null
     const fecha = body.fecha ? String(body.fecha) : new Date().toISOString().slice(0, 10)
 
     const scores: Record<string, number> = {}
@@ -81,14 +126,25 @@ export async function POST(req: NextRequest) {
     const id = body.id ? String(body.id) : genId()
     const now = Date.now()
 
+    // Is this an update of an existing row, or a brand new evaluation?
+    let isNew = true
+    if (body.id) {
+      const existing = await db.execute({
+        sql: `SELECT 1 FROM evaluations WHERE id = ? LIMIT 1`,
+        args: [String(body.id)],
+      })
+      isNew = existing.rows.length === 0
+    }
+
     await db.execute({
       sql: `INSERT INTO evaluations
-        (id, proveedor, correo, fecha, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10,
+        (id, proveedor, correo, telefono, fecha, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10,
          total, calificacion, clasificacion, observaciones, evaluador, cargo, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           proveedor=excluded.proveedor,
           correo=excluded.correo,
+          telefono=excluded.telefono,
           fecha=excluded.fecha,
           c1=excluded.c1, c2=excluded.c2, c3=excluded.c3, c4=excluded.c4,
           c5=excluded.c5, c6=excluded.c6, c7=excluded.c7, c8=excluded.c8,
@@ -102,18 +158,26 @@ export async function POST(req: NextRequest) {
           updated_at=excluded.updated_at
       `,
       args: [
-        id, proveedor, correo, fecha,
+        id, proveedor, correo, telefono, fecha,
         scores.c1, scores.c2, scores.c3, scores.c4, scores.c5,
         scores.c6, scores.c7, scores.c8, scores.c9, scores.c10,
         total, calificacion, clasificacion, observaciones, evaluador, cargo, now, now,
       ],
     })
 
+    // Keep the suppliers table in sync with the latest contact info.
+    try {
+      await upsertSupplier(proveedor, correo, telefono, fecha, isNew)
+    } catch (e) {
+      console.warn('[POST /api/evaluations] upsertSupplier failed (non-fatal):', e)
+    }
+
     return NextResponse.json({
       data: {
         id,
         proveedor,
         correo,
+        telefono,
         fecha,
         ...scores,
         total,
