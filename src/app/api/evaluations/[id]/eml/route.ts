@@ -18,6 +18,7 @@ interface EmlOptions {
   cc?: string
   subject: string
   body: string
+  fromEmail: string  // user's Outlook mailbox — opens as a draft under this account
   pdfBuffer: Buffer
   pdfFilename: string
   chartBuffer: Buffer | null
@@ -106,20 +107,27 @@ function quotedPrintable(text: string): string {
 function buildEml(opts: EmlOptions): string {
   const boundary = genBoundary()
   const headers: string[] = []
-  // Minimal headers. No From header — Outlook will use the currently-
-  // logged-in account as the sender when the user hits "Send".
+  // ----- The exact header set that makes Outlook open this .eml as a
+  //       brand-new DRAFT (with a "Send" button) rather than a received
+  //       message (which would show "Reply / Reply All"):
   //
-  // Important: NO Message-ID, NO In-Reply-To, NO References, NO Auto-Submitted,
-  // NO X-Mailer, NO X-Auto-Response-Suppress. Including any of these makes
-  // Outlook treat the .eml as a *received* message and present a "Reply"
-  // / "Reply All" toolbar instead of the simple "Send" button. Without
-  // them, Outlook opens the file as a brand-new draft ready to send.
+  //   - From: required. Without it, Outlook gets confused and shows the
+  //     message in the reading pane. With it = your own mailbox, Outlook
+  //     treats it as a draft you wrote.
+  //   - To: the recipient.
+  //   - Subject: required so the draft isn't blank.
+  //   - MIME-Version + Content-Type: required so the attachments parse.
+  //
+  //   DO NOT include: Date, Message-ID, In-Reply-To, References,
+  //   Auto-Submitted, X-Mailer, X-Auto-Response-Suppress, X-Microsoft-*
+  //   headers. Any of those makes Outlook treat the file as a *received*
+  //   message and show the Reply / Reply-All toolbar instead of Send.
+  //   Outlook will fill in Date + Message-ID itself when the user clicks
+  //   Send.
+  headers.push(`From: ${opts.fromEmail}`)
   headers.push(`To: ${opts.to}`)
   if (opts.cc) headers.push(`Cc: ${opts.cc}`)
   headers.push(`Subject: ${encodeHeader(opts.subject)}`)
-  // Date = right now. A timestamp in the past makes Outlook flag it as
-  // "received earlier"; today's date keeps it looking fresh.
-  headers.push(`Date: ${rfc2822Date()}`)
   headers.push(`MIME-Version: 1.0`)
   headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
 
@@ -240,8 +248,11 @@ export async function GET(
   const subject = url.searchParams.get('subject') ||
     `Evaluación de Proveedor - ${ev.proveedor} | Calificación: ${ev.calificacion.toFixed(1)} (${ev.clasificacion})`
   const body = url.searchParams.get('body') || buildDefaultBody(ev, ev.evaluador, ev.cargo)
-  // No fromName / fromEmail — Outlook will use the currently-logged-in
-  // account when the user opens the .eml. See comment in buildEml().
+  // The From address — user's own Outlook mailbox. With this header set
+  // (and only this header — no Date, no Message-ID), Outlook opens the
+  // .eml as a draft you wrote, with a "Send" button. Without From,
+  // Outlook would show it in the reading pane (Reply mode).
+  const fromEmail = url.searchParams.get('fromEmail') || 'compras@semain.com.mx'
 
   // Fetch the PDF and chart PNG via internal HTTP (same-origin)
   const baseUrl = `${url.protocol}//${url.host}`
@@ -271,6 +282,7 @@ export async function GET(
     to,
     subject,
     body,
+    fromEmail,
     pdfBuffer,
     pdfFilename,
     chartBuffer,
