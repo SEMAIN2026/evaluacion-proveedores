@@ -66,7 +66,23 @@ export function useEvaluations() {
     [refresh]
   )
 
-  return { data, loading, error, refresh, save, remove }
+  const markSent = useCallback(
+    async (id: string, tipo: 'EML' | 'WHATSAPP') => {
+      const res = await fetch(`/api/evaluations/${id}/mark-sent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tipo }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Error al marcar' }))
+        throw new Error(err.error || 'Error al marcar como enviado')
+      }
+      await refresh()
+    },
+    [refresh]
+  )
+
+  return { data, loading, error, refresh, save, remove, markSent }
 }
 
 export function useStats() {

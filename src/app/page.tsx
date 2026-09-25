@@ -49,7 +49,7 @@ import { cn } from '@/lib/utils'
 type View = 'list' | 'new' | 'dashboard' | 'selection'
 
 export default function Home() {
-  const { data, loading, save, remove } = useEvaluations()
+  const { data, loading, save, remove, markSent } = useEvaluations()
   const { stats } = useStats()
   const [view, setView] = useState<View>('list')
   const [editing, setEditing] = useState<Evaluation | null>(null)
@@ -425,6 +425,15 @@ export default function Home() {
         onOpenChange={setEmailOpen}
         evaluador={editing?.evaluador || 'Walter Piñera'}
         cargo={editing?.cargo || 'Ingeniero Calidad y Compras'}
+        onSent={() => {
+          // Called by the modal after a successful EML download or WhatsApp open.
+          // The backend already marked the row as enviado; this just refreshes
+          // the local state so the green "Enviado" badge shows up immediately
+          // on the card without waiting for the next /api/evaluations poll.
+          if (emailTarget) {
+            markSent(emailTarget.id, 'EML').catch(() => {})
+          }
+        }}
       />
 
       {/* Delete confirmation */}

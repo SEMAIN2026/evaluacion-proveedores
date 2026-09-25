@@ -226,6 +226,9 @@ export async function GET(
     cargo: String(r.cargo ?? 'Ingeniero Calidad y Compras'),
     created_at: Number(r.created_at ?? 0),
     updated_at: Number(r.updated_at ?? 0),
+    enviado: Number(r.enviado ?? 0),
+    enviado_tipo: r.enviado_tipo ? String(r.enviado_tipo) : null,
+    enviado_fecha: r.enviado_fecha ? Number(r.enviado_fecha) : null,
   }
 
   const url = new URL(req.url)
@@ -233,8 +236,11 @@ export async function GET(
   const subject = url.searchParams.get('subject') ||
     `Evaluación de Proveedor - ${ev.proveedor} | Calificación: ${ev.calificacion.toFixed(1)} (${ev.clasificacion})`
   const body = url.searchParams.get('body') || buildDefaultBody(ev, ev.evaluador, ev.cargo)
-  const fromName = url.searchParams.get('fromName') || ev.evaluador || 'SEMAIN Evaluación'
-  const fromEmail = url.searchParams.get('fromEmail') || 'evaluacion@semain.com.mx'
+  // From address = the user's Outlook mailbox. They download the .eml,
+  // double-click it, Outlook opens with this account as the sender, and
+  // they hit Send. No sevaulting of SMTP creds needed.
+  const fromName = url.searchParams.get('fromName') || ev.evaluador || 'SEMAIN Compras'
+  const fromEmail = url.searchParams.get('fromEmail') || 'compras@semain.com.mx'
 
   // Fetch the PDF and chart PNG via internal HTTP (same-origin)
   const baseUrl = `${url.protocol}//${url.host}`
@@ -271,6 +277,19 @@ export async function GET(
     chartBuffer,
     chartFilename,
   })
+
+  // Mark the evaluation as "enviado" via EML. Idempotent.
+  try {
+    const now = Date.now()
+    await db.execute({
+      sql: `UPDATE evaluations
+            SET enviado = 1, enviado_tipo = 'EML', enviado_fecha = ?, updated_at = ?
+            WHERE id = ?`,
+      args: [now, now, id],
+    })
+  } catch (e) {
+    console.warn('mark-sent after EML generation failed (non-fatal):', e)
+  }
 
   const emlFilename = `evaluacion-${ev.proveedor.replace(/[^\w\-]+/g, '_')}.eml`
 

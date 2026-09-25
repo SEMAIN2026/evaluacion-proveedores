@@ -49,6 +49,9 @@ export async function POST(
     cargo: String(r.cargo ?? 'Ingeniero Calidad y Compras'),
     created_at: Number(r.created_at ?? 0),
     updated_at: Number(r.updated_at ?? 0),
+    enviado: Number(r.enviado ?? 0),
+    enviado_tipo: r.enviado_tipo ? String(r.enviado_tipo) : null,
+    enviado_fecha: r.enviado_fecha ? Number(r.enviado_fecha) : null,
   }
 
   const body = await req.json().catch(() => ({}))

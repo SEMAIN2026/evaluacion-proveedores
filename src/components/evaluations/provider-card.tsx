@@ -14,6 +14,7 @@ import {
   Minus,
   Calendar,
   Phone,
+  CheckCircle2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -27,11 +28,27 @@ interface Props {
   onSendEmail: (ev: Evaluation) => void
 }
 
+/** Formats an ms-since-epoch as "hace 2h" / "ayer 14:30" / "25 sep 14:30". */
+function timeAgo(ms: number): string {
+  const now = Date.now()
+  const diff = Math.max(0, now - ms)
+  const min = Math.floor(diff / 60_000)
+  if (min < 1) return 'hace un momento'
+  if (min < 60) return `hace ${min} min`
+  const h = Math.floor(min / 60)
+  if (h < 24) return `hace ${h}h`
+  const d = Math.floor(h / 24)
+  if (d === 1) return 'ayer'
+  if (d < 7) return `hace ${d} días`
+  return new Date(ms).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
+}
+
 export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEmail }: Props) {
   const diff = avg != null ? ev.calificacion - avg : 0
   const hasEmail = !!ev.correo
   const hasPhone = !!ev.telefono
   const canSend = hasEmail || hasPhone
+  const isSent = Number(ev.enviado || 0) === 1
 
   return (
     <Card className="overflow-hidden hover:shadow-md transition-shadow border-slate-200">
@@ -53,9 +70,25 @@ export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEma
               </div>
             )}
             <div className="min-w-0 flex-1">
-              <h3 className="font-semibold text-slate-900 truncate text-base">
-                {ev.proveedor}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-slate-900 truncate text-base flex-1 min-w-0">
+                  {ev.proveedor}
+                </h3>
+                {isSent && (
+                  <span
+                    className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-semibold"
+                    title={
+                      ev.enviado_fecha
+                        ? `Enviado por ${ev.enviado_tipo} · ${timeAgo(ev.enviado_fecha)}`
+                        : `Enviado por ${ev.enviado_tipo}`
+                    }
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    Enviado{ev.enviado_tipo ? ` · ${ev.enviado_tipo === 'WHATSAPP' ? 'WhatsApp' : ev.enviado_tipo}` : ''}
+                    {ev.enviado_fecha ? ` · ${timeAgo(ev.enviado_fecha)}` : ''}
+                  </span>
+                )}
+              </div>
               <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
                 <Calendar className="w-3 h-3" />
                 {formatDate(ev.fecha)}

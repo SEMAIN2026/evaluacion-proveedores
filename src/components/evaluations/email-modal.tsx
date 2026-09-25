@@ -27,9 +27,13 @@ interface Props {
   onOpenChange: (open: boolean) => void
   evaluador: string
   cargo: string
+  /** Fired after the user downloads an EML OR opens WhatsApp for this ev.
+   *  The backend has already marked the row as enviado; this is so the
+   *  parent can refresh its state / show the green badge. */
+  onSent?: (tipo: 'EML' | 'WHATSAPP') => void
 }
 
-export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) {
+export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }: Props) {
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
   const [to, setTo] = useState('')
@@ -107,6 +111,10 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
       document.body.removeChild(a)
       URL.revokeObjectURL(objUrl)
       setDownloaded(true)
+      // Notify parent so the green "Enviado" badge appears on the card.
+      // The backend already marked the row as enviado via the EML endpoint,
+      // but we call onSent so the parent refreshes its local state.
+      onSent?.('EML')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al generar EML')
     } finally {
@@ -317,6 +325,19 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo }: Props) 
                   href={telefono.trim() ? buildWhatsAppHref(telefono, body) : '#'}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() => {
+                    if (telefono.trim()) {
+                      // The user clicked "Abrir WhatsApp" — mark this evaluation
+                      // as enviado via WhatsApp so the green badge appears.
+                      // Use fetch in the background; don't block navigation.
+                      fetch(`/api/evaluations/${ev.id}/mark-sent`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tipo: 'WHATSAPP' }),
+                      }).catch(() => {})
+                      onSent?.('WHATSAPP')
+                    }
+                  }}
                 >
                   <MessageCircle className="w-4 h-4 mr-2" />
                   Abrir WhatsApp

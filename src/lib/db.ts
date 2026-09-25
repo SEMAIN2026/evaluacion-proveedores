@@ -53,6 +53,9 @@ if (process.env.NODE_ENV !== 'production') globalForDb.dbClient = db
  *
  * Specifically:
  *   - ALTER TABLE evaluations ADD COLUMN telefono TEXT  (added 2026-09-25)
+ *   - ALTER TABLE evaluations ADD COLUMN enviado INTEGER NOT NULL DEFAULT 0  (added 2026-09-26)
+ *   - ALTER TABLE evaluations ADD COLUMN enviado_tipo TEXT  (added 2026-09-26)
+ *   - ALTER TABLE evaluations ADD COLUMN enviado_fecha INTEGER  (added 2026-09-26)
  *   - CREATE TABLE IF NOT EXISTS suppliers ...
  */
 export async function ensureSchema(): Promise<void> {
@@ -62,14 +65,29 @@ export async function ensureSchema(): Promise<void> {
     try {
       await db.execute(`ALTER TABLE evaluations ADD COLUMN telefono TEXT`)
     } catch (e) {
-      // "duplicate column name: telefono" means it's already there — that's fine.
       const msg = e instanceof Error ? e.message : String(e)
       if (!/duplicate column name/i.test(msg)) {
         console.warn('[ensureSchema] ALTER evaluations add telefono:', msg)
       }
     }
 
-    // 2) Create suppliers table if it doesn't exist
+    // 2) Add enviado* columns to evaluations (idempotent via try/catch)
+    for (const stmt of [
+      `ALTER TABLE evaluations ADD COLUMN enviado INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE evaluations ADD COLUMN enviado_tipo TEXT`,
+      `ALTER TABLE evaluations ADD COLUMN enviado_fecha INTEGER`,
+    ]) {
+      try {
+        await db.execute(stmt)
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (!/duplicate column name/i.test(msg)) {
+          console.warn('[ensureSchema] ALTER evaluations add enviado*:', msg)
+        }
+      }
+    }
+
+    // 3) Create suppliers table if it doesn't exist
     await db.execute(`
       CREATE TABLE IF NOT EXISTS suppliers (
         id TEXT PRIMARY KEY,

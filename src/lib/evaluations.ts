@@ -25,6 +25,10 @@ export interface Evaluation {
   cargo: string
   created_at: number
   updated_at: number
+  // "Marked as sent" tracking — set when the user downloads an EML or opens WhatsApp.
+  enviado: number        // 0 = no enviado, 1 = enviado
+  enviado_tipo: string | null  // 'EML' | 'WHATSAPP'
+  enviado_fecha: number | null // ms since epoch
 }
 
 export interface Supplier {
@@ -109,6 +113,9 @@ export function rowToEvaluation(row: Record<string, unknown>): Evaluation {
     cargo: String(row.cargo ?? 'Ingeniero Calidad y Compras'),
     created_at: Number(row.created_at ?? 0),
     updated_at: Number(row.updated_at ?? 0),
+    enviado: Number(row.enviado ?? 0),
+    enviado_tipo: row.enviado_tipo ? String(row.enviado_tipo) : null,
+    enviado_fecha: row.enviado_fecha ? Number(row.enviado_fecha) : null,
   }
 }
 
