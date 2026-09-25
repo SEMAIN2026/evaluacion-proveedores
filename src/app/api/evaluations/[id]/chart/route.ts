@@ -288,7 +288,8 @@ function buildChartSVG({ rows, highlightId, logoBase64, periodLabel, targetNombr
   `
   // (Línea verde del header eliminada a petición del usuario — se
   //  superponía con el subtítulo "Posición de ... frente a ...".)
-  // header += `<rect x="0" y="${padTop - 22}" width="${W}" height="3" fill="${SEMAIN_GREEN}"/>`
+  // (La línea divisoria gris <line y="padTop-20"> también fue removida
+  //  por la misma razón: quedaba inmediatamente encima del subtítulo.)
 
   // ---- GRIDLINES (vertical reference) ----
   let gridlines = ''
@@ -410,7 +411,6 @@ function buildChartSVG({ rows, highlightId, logoBase64, periodLabel, targetNombr
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <rect x="0" y="0" width="${W}" height="${H}" fill="#ffffff"/>
   ${header}
-  <line x1="0" y1="${padTop - 20}" x2="${W}" y2="${padTop - 20}" stroke="#e2e8f0" stroke-width="1"/>
   ${zones}
   ${gridlines}
   ${bars}
