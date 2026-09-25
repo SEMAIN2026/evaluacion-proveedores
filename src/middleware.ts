@@ -12,7 +12,6 @@ const PUBLIC_PATHS = [
   '/api/auth',
   '/api/auth/check',
   '/api/auth/logout',
-  '/api/debug-env',
   '/_next',
   '/favicon.ico',
   '/downloads',
