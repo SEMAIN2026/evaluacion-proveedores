@@ -286,8 +286,9 @@ function buildChartSVG({ rows, highlightId, logoBase64, periodLabel, targetNombr
       Escala 0 – 100
     </text>
   `
-  // Accent line at bottom of header
-  header += `<rect x="0" y="${padTop - 22}" width="${W}" height="3" fill="${SEMAIN_GREEN}"/>`
+  // (Línea verde del header eliminada a petición del usuario — se
+  //  superponía con el subtítulo "Posición de ... frente a ...".)
+  // header += `<rect x="0" y="${padTop - 22}" width="${W}" height="3" fill="${SEMAIN_GREEN}"/>`
 
   // ---- GRIDLINES (vertical reference) ----
   let gridlines = ''
@@ -396,11 +397,10 @@ function buildChartSVG({ rows, highlightId, logoBase64, periodLabel, targetNombr
   })
 
   // ---- FOOTER ----
+  // (Texto explicativo "Cada temporada..." eliminado a petición del
+  //  usuario — solo se conserva la línea divisoria y la marca de agua.)
   const footer = `
     <line x1="${padL}" y1="${footerY - 12}" x2="${W - padR}" y2="${footerY - 12}" stroke="#e2e8f0" stroke-width="1"/>
-    <text x="${padL}" y="${footerY}" font-family="Carlito" font-size="12" fill="#64748b">
-      Cada temporada (mes / año) se evalúa de forma independiente — no se mezclan evaluaciones de períodos distintos.
-    </text>
     <text x="${W - padR}" y="${footerY}" text-anchor="end" font-family="Carlito" font-size="12" font-weight="600" fill="#64748b">
       SEMAIN · F-CAL-07 REV01
     </text>

@@ -527,56 +527,60 @@ function PdfDocument({ ev, logoDataUrl, signatureDataUrl, chartDataUrl }: PdfDoc
         <Text style={{ position: 'absolute', left: M_LEFT + 1.7, top: 604.6, fontFamily: 'Helvetica', fontSize: 8, color: GRAY }}>
           F-CAL-07 REV01
         </Text>
-
-        {/* ============== OPTIONAL CHART PAGE ============== */}
-        {chartDataUrl && (
-          <Page
-            size={[PAGE_W, PAGE_H]}
-            style={{ margin: 0, padding: 0, position: 'relative' }}
-          >
-            <View style={{ position: 'absolute', left: 0, top: 0, width: PAGE_W, height: PAGE_H, backgroundColor: WHITE }} />
-            <Text
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 40,
-                width: PAGE_W,
-                textAlign: 'center',
-                fontFamily: 'Helvetica-Bold',
-                fontSize: 14,
-                color: BLACK,
-              }}
-            >
-              POSICIÓN COMPARATIVA ENTRE PROVEEDORES
-            </Text>
-            <Text
-              style={{
-                position: 'absolute',
-                left: 0,
-                top: 62,
-                width: PAGE_W,
-                textAlign: 'center',
-                fontFamily: 'Helvetica',
-                fontSize: 10,
-                color: GRAY,
-              }}
-            >
-              {ev.proveedor} - Calificación: {calificacion.toFixed(1)} ({clasificacion})
-            </Text>
-            <PdfImage
-              src={chartDataUrl}
-              style={{
-                position: 'absolute',
-                left: 40,
-                top: 100,
-                width: PAGE_W - 80,
-                height: PAGE_H - 200,
-                objectFit: 'contain',
-              }}
-            />
-          </Page>
-        )}
       </Page>
+
+      {/* ============== OPTIONAL CHART PAGE (separate Page, not nested)
+          Previously this was nested INSIDE the main Page which is invalid
+          in react-pdf and produced an empty intermediate page. Moving it
+          to a sibling <Page> so the PDF has exactly 1 page (no chart) or
+          exactly 2 pages (with chart) — no blank pages in between. ============== */}
+      {chartDataUrl && (
+        <Page
+          size={[PAGE_W, PAGE_H]}
+          style={{ margin: 0, padding: 0, position: 'relative' }}
+        >
+          <View style={{ position: 'absolute', left: 0, top: 0, width: PAGE_W, height: PAGE_H, backgroundColor: WHITE }} />
+          <Text
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 40,
+              width: PAGE_W,
+              textAlign: 'center',
+              fontFamily: 'Helvetica-Bold',
+              fontSize: 14,
+              color: BLACK,
+            }}
+          >
+            POSICIÓN COMPARATIVA ENTRE PROVEEDORES
+          </Text>
+          <Text
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 62,
+              width: PAGE_W,
+              textAlign: 'center',
+              fontFamily: 'Helvetica',
+              fontSize: 10,
+              color: GRAY,
+            }}
+          >
+            {ev.proveedor} - Calificación: {calificacion.toFixed(1)} ({clasificacion})
+          </Text>
+          <PdfImage
+            src={chartDataUrl}
+            style={{
+              position: 'absolute',
+              left: 40,
+              top: 100,
+              width: PAGE_W - 80,
+              height: PAGE_H - 200,
+              objectFit: 'contain',
+            }}
+          />
+        </Page>
+      )}
     </Document>
   )
 }
