@@ -25,6 +25,7 @@ const PUBLIC_PATHS = [
 const PUBLIC_API_PATTERNS = [
   /^\/api\/evaluations\/[^/]+\/pdf$/,
   /^\/api\/evaluations\/[^/]+\/chart$/,
+  /^\/api\/evaluations\/[^/]+\/eml$/,
   /^\/api\/evaluations\/[^/]+\/outlook-script$/,
   /^\/api\/selections\/[^/]+\/pdf$/,
   /^\/api\/export$/,
