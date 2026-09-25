@@ -19,7 +19,7 @@ const PUBLIC_PATHS = [
   '/fonts',
 ]
 
-// API routes that serve downloadable files (PDF, chart PNG, CSV export)
+// API routes that serve downloadable files (PDF, chart PNG, CSV export, XLSX export)
 // These need to be accessible even when the cookie doesn't transfer
 // (e.g., opening a download link in a new tab)
 const PUBLIC_API_PATTERNS = [
@@ -27,6 +27,7 @@ const PUBLIC_API_PATTERNS = [
   /^\/api\/evaluations\/[^/]+\/chart$/,
   /^\/api\/evaluations\/[^/]+\/eml$/,
   /^\/api\/evaluations\/[^/]+\/outlook-script$/,
+  /^\/api\/evaluations\/export-season$/,
   /^\/api\/selections\/[^/]+\/pdf$/,
   /^\/api\/export$/,
 ]
