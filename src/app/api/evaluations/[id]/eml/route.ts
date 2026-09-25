@@ -111,8 +111,48 @@ function wrapBase64(b64: string): string {
   return b64.replace(/(.{76})/g, '$1\r\n')
 }
 
+/** Escape a string for safe inclusion in HTML body content. */
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+/** Convert the plain-text body to a styled HTML version that Outlook
+ *  will display in compose mode. Using HTML (instead of just text/plain)
+ *  is the trick that stops Outlook 365 from inserting the user's
+ *  signature AT THE TOP of the body — with HTML, Outlook respects the
+ *  existing body content and appends the signature at the END, the way
+ *  the user wants. */
+function bodyToHtml(body: string): string {
+  // Convert plain text to HTML: paragraphs separated by blank lines
+  // become <p> elements, single newlines become <br>, basic styling.
+  const paragraphs = body.split(/\n\n+/)
+  const htmlParagraphs = paragraphs.map((p) => {
+    const escaped = escapeHtml(p).replace(/\n/g, '<br/>')
+    return `      <p style="margin:0 0 12px 0; line-height:1.5;">${escaped}</p>`
+  })
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8"/>
+    <style>
+      body { font-family: 'Calibri', 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1F1B1A; }
+      p { margin: 0 0 12px 0; line-height: 1.5; }
+      strong { color: #302C2B; }
+    </style>
+  </head>
+  <body>
+${htmlParagraphs.join('\n')}
+  </body>
+</html>`
+}
+
 function buildEml(p: EmlParts): string {
-  const boundary = genBoundary()
+  const outerBoundary = genBoundary()
+  const altBoundary = genBoundary()
 
   // ---- Headers ----
   // The exact set that makes Outlook open the .eml as a NEW DRAFT with
@@ -141,28 +181,51 @@ function buildEml(p: EmlParts): string {
   if (p.cc) headers.push(`Cc: ${p.cc}`)
   headers.push(`Subject: ${encodeHeader(p.subject)}`)
   headers.push('MIME-Version: 1.0')
-  headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
+  // Outer container is multipart/mixed so we can attach PDF + PNG.
+  // The FIRST part is a multipart/alternative that carries BOTH
+  // text/plain and text/html versions of the body. Outlook displays
+  // the HTML and — critically — appends the user's signature at the
+  // END of the HTML body, not at the beginning (which is what happens
+  // when only text/plain is provided).
+  headers.push(`Content-Type: multipart/mixed; boundary="${outerBoundary}"`)
 
-  // ---- Body ----
   const parts: string[] = []
-  parts.push(`--${boundary}`)
+
+  // ---- Part 1: multipart/alternative (text/plain + text/html) ----
+  parts.push(`--${outerBoundary}`)
+  parts.push(`Content-Type: multipart/alternative; boundary="${altBoundary}"`)
+
+  // 1a. text/plain
+  parts.push(`--${altBoundary}`)
   parts.push('Content-Type: text/plain; charset=UTF-8')
   parts.push('Content-Transfer-Encoding: quoted-printable')
   parts.push('Content-Disposition: inline')
   parts.push('')
   parts.push(toQuotedPrintable(p.body))
 
-  // ---- PDF attachment ----
-  parts.push(`--${boundary}`)
+  // 1b. text/html  ← Outlook uses THIS to render the body, and THIS is
+  //     what makes it put the signature at the end instead of at the top.
+  parts.push(`--${altBoundary}`)
+  parts.push('Content-Type: text/html; charset=UTF-8')
+  parts.push('Content-Transfer-Encoding: quoted-printable')
+  parts.push('Content-Disposition: inline')
+  parts.push('')
+  parts.push(toQuotedPrintable(bodyToHtml(p.body)))
+
+  // Close alternative
+  parts.push(`--${altBoundary}--`)
+
+  // ---- Part 2: PDF attachment ----
+  parts.push(`--${outerBoundary}`)
   parts.push(`Content-Type: application/pdf; name="${p.pdfFilename}"`)
   parts.push('Content-Transfer-Encoding: base64')
   parts.push(`Content-Disposition: attachment; filename="${p.pdfFilename}"`)
   parts.push('')
   parts.push(wrapBase64(p.pdfBuffer.toString('base64')))
 
-  // ---- Chart attachment (optional) ----
+  // ---- Part 3: Chart attachment (optional) ----
   if (p.chartBuffer) {
-    parts.push(`--${boundary}`)
+    parts.push(`--${outerBoundary}`)
     parts.push(`Content-Type: image/png; name="${p.chartFilename}"`)
     parts.push('Content-Transfer-Encoding: base64')
     parts.push(`Content-Disposition: attachment; filename="${p.chartFilename}"`)
@@ -171,7 +234,7 @@ function buildEml(p: EmlParts): string {
   }
 
   // ---- Closing boundary ----
-  parts.push(`--${boundary}--`)
+  parts.push(`--${outerBoundary}--`)
   parts.push('')
 
   return headers.join('\r\n') + '\r\n\r\n' + parts.join('\r\n')
