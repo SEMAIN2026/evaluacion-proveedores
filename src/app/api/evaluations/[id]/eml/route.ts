@@ -106,21 +106,22 @@ function quotedPrintable(text: string): string {
 function buildEml(opts: EmlOptions): string {
   const boundary = genBoundary()
   const headers: string[] = []
-  // No From header — Outlook / Apple Mail / Thunderbird will use the
-  // currently-logged-in account as the sender when the user hits "Send".
-  // Setting an explicit From: would force a specific account and break
-  // if the user is logged in with a different mailbox (the user
-  // specifically asked for Outlook to use the account that's already
-  // open, not a hardcoded one).
+  // Minimal headers. No From header — Outlook will use the currently-
+  // logged-in account as the sender when the user hits "Send".
+  //
+  // Important: NO Message-ID, NO In-Reply-To, NO References, NO Auto-Submitted,
+  // NO X-Mailer, NO X-Auto-Response-Suppress. Including any of these makes
+  // Outlook treat the .eml as a *received* message and present a "Reply"
+  // / "Reply All" toolbar instead of the simple "Send" button. Without
+  // them, Outlook opens the file as a brand-new draft ready to send.
   headers.push(`To: ${opts.to}`)
   if (opts.cc) headers.push(`Cc: ${opts.cc}`)
   headers.push(`Subject: ${encodeHeader(opts.subject)}`)
+  // Date = right now. A timestamp in the past makes Outlook flag it as
+  // "received earlier"; today's date keeps it looking fresh.
   headers.push(`Date: ${rfc2822Date()}`)
-  headers.push(`Message-ID: <semain-eval-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}@semain.com.mx>`)
   headers.push(`MIME-Version: 1.0`)
   headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
-  headers.push(`X-Mailer: SEMAIN Evaluación de Proveedores`)
-  headers.push(`Auto-Submitted: auto-generated`)
 
   const parts: string[] = []
   // Body part
