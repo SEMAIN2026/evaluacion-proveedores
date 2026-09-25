@@ -443,6 +443,10 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function buildDefaultBody(ev: Evaluation, evaluador: string, cargo: string): string {
+  // Note: nombre (evaluador) and cargo are intentionally NOT included
+  // in the body. Outlook inserts the user's signature (with name +
+  // position + logo) automatically at the bottom of every new email —
+  // including them here would duplicate the signature.
   return `Estimado equipo de ${ev.proveedor},
 
 Les compartimos los resultados de la evaluación de desempeño como proveedor, realizada el ${formatDate(ev.fecha)}.
@@ -463,9 +467,7 @@ ${ev.observaciones && ev.observaciones.trim() !== ''
   }
 Quedamos atentos a sus comentarios y a continuar trabajando en la mejora continua.
 
-Saludos cordiales,
-${evaluador}
-${cargo}`
+Saludos cordiales.`
 }
 
 function formatDate(s: string): string {
