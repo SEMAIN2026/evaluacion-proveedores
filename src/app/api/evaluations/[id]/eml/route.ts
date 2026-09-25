@@ -4,163 +4,157 @@ import { db, ensureSchema, type Evaluation } from '@/lib/db'
 /**
  * GET /api/evaluations/[id]/eml?to=...&subject=...&body=...
  *
- * Generates a complete RFC 822 .eml file (downloadable) with:
- *   - Headers: From, To, Subject, Date, MIME-Version, Content-Type
- *   - Body: text/plain (UTF-8, quoted-printable)
- *   - Attachments: evaluation PDF + comparative chart PNG (base64)
+ * Generates a minimal .eml file (RFC 5322 / RFC 2045) that, when opened
+ * with a double-click, makes Outlook / Apple Mail / Thunderbird show a
+ * brand-new DRAFT with the "Send" button — NOT the reading-pane view
+ * with "Reply / Reply All" that happens when the .eml looks like a
+ * received message.
  *
- * The user downloads this .eml, double-clicks it, and their email client
- * (Outlook, Thunderbird, Apple Mail, Windows Mail, etc.) opens it ready to send.
+ * === The exact header set that works ===
+ *
+ *   INCLUDE:
+ *     From:    <user's Outlook mailbox>
+ *     To:      <recipient>
+ *     Subject: <subject>
+ *     MIME-Version: 1.0
+ *     Content-Type: multipart/mixed; boundary="..."
+ *
+ *   EXCLUDE (any of these makes Outlook treat the file as a *received*
+ *   message and shows Reply / Reply All):
+ *     Date, Message-ID, In-Reply-To, References, Return-Path,
+ *     Delivered-To, X-Mailer, X-Auto-Response-Suppress, Auto-Submitted,
+ *     X-MS-*, X-Microsoft-*, Received, X-Original-To, X-Priority.
+ *
+ * Outlook fills in Date + Message-ID itself when the user hits Send.
+ *
+ * === Body / attachments ===
+ *
+ *   - text/plain body, UTF-8, quoted-printable (so non-ASCII works
+ *     without surprises).
+ *   - PDF evaluation report, base64.
+ *   - PNG comparative chart, base64 (optional, included if the chart
+ *     endpoint returns OK).
  */
 
-interface EmlOptions {
+const FROM_EMAIL = 'compras@semain.com.mx'
+
+interface EmlParts {
   to: string
   cc?: string
   subject: string
   body: string
-  fromEmail: string  // user's Outlook mailbox — opens as a draft under this account
   pdfBuffer: Buffer
   pdfFilename: string
   chartBuffer: Buffer | null
   chartFilename: string
 }
 
-function rfc2822Date(d = new Date()): string {
-  // Thu, 25 Sep 2026 12:00:00 +0000
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const tzOff = -d.getTimezoneOffset()
-  const sign = tzOff >= 0 ? '+' : '-'
-  const tzH = pad(Math.floor(Math.abs(tzOff) / 60))
-  const tzM = pad(Math.abs(tzOff) % 60)
-  return `${days[d.getDay()]}, ${pad(d.getDate())} ${months[d.getMonth()]} ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())} ${sign}${tzH}${tzM}`
-}
-
 function genBoundary(): string {
-  return `----=_SEMAIN_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`
+  return `----=_SEMAIN_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 14)}`
 }
 
-/** Encode header value to be safe for non-ASCII (RFC 2047 encoded-word). */
+/** Encode header value (RFC 2047) for non-ASCII characters. */
 function encodeHeader(v: string): string {
   if (!v) return ''
-  // ASCII-only short value: return as-is (with quotes if contains specials)
-  if (/^[\x20-\x7E]+$/.test(v) && v.length < 78) {
-    if (/[()<>@,;:"\\/[\]?=]/.test(v)) {
-      return `"${v.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
-    }
-    return v
-  }
-  // Otherwise: RFC 2047 encoded-word base64
+  if (/^[\x20-\x7E]+$/.test(v) && v.length < 78) return v
   const b64 = Buffer.from(v, 'utf-8').toString('base64')
   return `=?UTF-8?B?${b64}?=`
 }
 
-/** Encode body as quoted-printable per RFC 2045. */
-function quotedPrintable(text: string): string {
+/** Encode body as RFC 2045 quoted-printable, line-wrapped at 76 chars. */
+function toQuotedPrintable(text: string): string {
   const out: string[] = []
   let lineLen = 0
-  const pushChar = (ch: string) => {
-    if (lineLen + ch.length > 75) {
+  const push = (s: string) => {
+    if (lineLen + s.length > 75) {
       out.push('=\r\n')
       lineLen = 0
     }
-    out.push(ch)
-    lineLen += ch.length
+    out.push(s)
+    lineLen += s.length
   }
   for (let i = 0; i < text.length; i++) {
-    const c = text.charCodeAt(i)
     const ch = text[i]
+    const code = text.charCodeAt(i)
+    if (ch === '\r') continue
     if (ch === '\n') {
       out.push('\r\n')
       lineLen = 0
       continue
     }
-    if (ch === '\r') {
-      // skip CR, will handle LF next iteration
-      continue
-    }
     if (ch === ' ' || ch === '\t') {
-      // Look ahead: if end of line, must encode
       const next = text[i + 1]
       if (next === '\n' || next === '\r' || i === text.length - 1) {
-        pushChar(`=${ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}`)
+        push(`=${code.toString(16).toUpperCase().padStart(2, '0')}`)
       } else {
-        pushChar(ch)
+        push(ch)
       }
       continue
     }
-    // Printable ASCII range 33-126, except '='
-    if (c >= 33 && c <= 126 && ch !== '=') {
-      pushChar(ch)
+    if (code >= 33 && code <= 126 && ch !== '=') {
+      push(ch)
     } else {
-      // Encode as UTF-8 bytes, then QP encode each byte
+      // Encode each UTF-8 byte as =XX
       const bytes = Buffer.from(ch, 'utf-8')
       for (const b of bytes) {
-        pushChar(`=${b.toString(16).toUpperCase().padStart(2, '0')}`)
+        push(`=${b.toString(16).toUpperCase().padStart(2, '0')}`)
       }
     }
   }
   return out.join('')
 }
 
-function buildEml(opts: EmlOptions): string {
+/** Wrap a base64 string into 76-char lines. */
+function wrapBase64(b64: string): string {
+  return b64.replace(/(.{76})/g, '$1\r\n')
+}
+
+function buildEml(p: EmlParts): string {
   const boundary = genBoundary()
-  const headers: string[] = []
-  // ----- The exact header set that makes Outlook open this .eml as a
-  //       brand-new DRAFT (with a "Send" button) rather than a received
-  //       message (which would show "Reply / Reply All"):
-  //
-  //   - From: required. Without it, Outlook gets confused and shows the
-  //     message in the reading pane. With it = your own mailbox, Outlook
-  //     treats it as a draft you wrote.
-  //   - To: the recipient.
-  //   - Subject: required so the draft isn't blank.
-  //   - MIME-Version + Content-Type: required so the attachments parse.
-  //
-  //   DO NOT include: Date, Message-ID, In-Reply-To, References,
-  //   Auto-Submitted, X-Mailer, X-Auto-Response-Suppress, X-Microsoft-*
-  //   headers. Any of those makes Outlook treat the file as a *received*
-  //   message and show the Reply / Reply-All toolbar instead of Send.
-  //   Outlook will fill in Date + Message-ID itself when the user clicks
-  //   Send.
-  headers.push(`From: ${opts.fromEmail}`)
-  headers.push(`To: ${opts.to}`)
-  if (opts.cc) headers.push(`Cc: ${opts.cc}`)
-  headers.push(`Subject: ${encodeHeader(opts.subject)}`)
-  headers.push(`MIME-Version: 1.0`)
+
+  // ---- Headers ----
+  // EXACTLY these 5 headers. No Date. No Message-ID. No X-*.
+  const headers: string[] = [
+    `From: ${FROM_EMAIL}`,
+    `To: ${p.to}`,
+  ]
+  if (p.cc) headers.push(`Cc: ${p.cc}`)
+  headers.push(`Subject: ${encodeHeader(p.subject)}`)
+  headers.push('MIME-Version: 1.0')
   headers.push(`Content-Type: multipart/mixed; boundary="${boundary}"`)
 
+  // ---- Body ----
   const parts: string[] = []
-  // Body part
   parts.push(`--${boundary}`)
-  parts.push(`Content-Type: text/plain; charset=UTF-8`)
-  parts.push(`Content-Transfer-Encoding: quoted-printable`)
-  parts.push(`Content-Disposition: inline`)
-  parts.push(``)
-  parts.push(quotedPrintable(opts.body))
+  parts.push('Content-Type: text/plain; charset=UTF-8')
+  parts.push('Content-Transfer-Encoding: quoted-printable')
+  parts.push('Content-Disposition: inline')
+  parts.push('')
+  parts.push(toQuotedPrintable(p.body))
 
-  // PDF attachment
+  // ---- PDF attachment ----
   parts.push(`--${boundary}`)
-  parts.push(`Content-Type: application/pdf; name="${opts.pdfFilename}"`)
-  parts.push(`Content-Transfer-Encoding: base64`)
-  parts.push(`Content-Disposition: attachment; filename="${opts.pdfFilename}"`)
-  parts.push(``)
-  parts.push(opts.pdfBuffer.toString('base64').replace(/(.{76})/g, '$1\r\n'))
+  parts.push(`Content-Type: application/pdf; name="${p.pdfFilename}"`)
+  parts.push('Content-Transfer-Encoding: base64')
+  parts.push(`Content-Disposition: attachment; filename="${p.pdfFilename}"`)
+  parts.push('')
+  parts.push(wrapBase64(p.pdfBuffer.toString('base64')))
 
-  // Chart attachment (optional)
-  if (opts.chartBuffer) {
+  // ---- Chart attachment (optional) ----
+  if (p.chartBuffer) {
     parts.push(`--${boundary}`)
-    parts.push(`Content-Type: image/png; name="${opts.chartFilename}"`)
-    parts.push(`Content-Transfer-Encoding: base64`)
-    parts.push(`Content-Disposition: attachment; filename="${opts.chartFilename}"`)
-    parts.push(``)
-    parts.push(opts.chartBuffer.toString('base64').replace(/(.{76})/g, '$1\r\n'))
+    parts.push(`Content-Type: image/png; name="${p.chartFilename}"`)
+    parts.push('Content-Transfer-Encoding: base64')
+    parts.push(`Content-Disposition: attachment; filename="${p.chartFilename}"`)
+    parts.push('')
+    parts.push(wrapBase64(p.chartBuffer.toString('base64')))
   }
 
-  // Closing
+  // ---- Closing boundary ----
   parts.push(`--${boundary}--`)
-  parts.push(``)
+  parts.push('')
 
   return headers.join('\r\n') + '\r\n\r\n' + parts.join('\r\n')
 }
@@ -178,7 +172,7 @@ RESUMEN DE LA EVALUACIÓN
 
 Les adjuntamos:
 1. El reporte completo en PDF con el detalle por criterio.
-2. Una gráfica comparativa que muestra la posición de ${ev.proveedor} frente a los demás proveedores evaluados.
+2. Una gráfica comparativa que muestra la posición de ${ev.proveedor} frente a los demás proveedores evaluados en el mismo período.
 
 ${ev.observaciones && ev.observaciones.trim() !== ''
     ? `OBSERVACIONES:\n${ev.observaciones}\n`
@@ -206,6 +200,8 @@ export async function GET(
 ) {
   await ensureSchema()
   const { id } = await params
+
+  // 1) Fetch the evaluation row.
   const res = await db.execute({
     sql: `SELECT * FROM evaluations WHERE id = ? LIMIT 1`,
     args: [id],
@@ -243,24 +239,29 @@ export async function GET(
     enviado_fecha: r.enviado_fecha ? Number(r.enviado_fecha) : null,
   }
 
+  // 2) Build header values from query string (or defaults from ev).
   const url = new URL(req.url)
   const to = (url.searchParams.get('to') || ev.correo || '').trim()
   const subject = url.searchParams.get('subject') ||
     `Evaluación de Proveedor - ${ev.proveedor} | Calificación: ${ev.calificacion.toFixed(1)} (${ev.clasificacion})`
   const body = url.searchParams.get('body') || buildDefaultBody(ev, ev.evaluador, ev.cargo)
-  // The From address — user's own Outlook mailbox. With this header set
-  // (and only this header — no Date, no Message-ID), Outlook opens the
-  // .eml as a draft you wrote, with a "Send" button. Without From,
-  // Outlook would show it in the reading pane (Reply mode).
-  const fromEmail = url.searchParams.get('fromEmail') || 'compras@semain.com.mx'
+  // Note: fromEmail is intentionally NOT read from the query. It's a
+  // constant (compras@semain.com.mx). Allowing it to be overridden is
+  // how 'evaluacion@semain.com.mx' snuck back in earlier.
 
-  // Fetch the PDF and chart PNG via internal HTTP (same-origin)
+  if (!to) {
+    return NextResponse.json(
+      { error: 'Falta el destinatario (to)' },
+      { status: 400 }
+    )
+  }
+
+  // 3) Fetch PDF (with chart embedded as a second page) + chart PNG.
   const baseUrl = `${url.protocol}//${url.host}`
   const [pdfRes, chartRes] = await Promise.all([
     fetch(`${baseUrl}/api/evaluations/${id}/pdf?withChart=1`, { cache: 'no-store' }),
     fetch(`${baseUrl}/api/evaluations/${id}/chart`, { cache: 'no-store' }).catch(() => null),
   ])
-
   if (!pdfRes.ok) {
     return NextResponse.json(
       { error: `No se pudo generar el PDF (${pdfRes.status})` },
@@ -268,28 +269,29 @@ export async function GET(
     )
   }
 
+  const safeName = ev.proveedor.replace(/[^\w\-]+/g, '_')
   const pdfBuffer = Buffer.from(await pdfRes.arrayBuffer())
-  const pdfFilename = `evaluacion-${ev.proveedor.replace(/[^\w\-]+/g, '_')}.pdf`
+  const pdfFilename = `evaluacion-${safeName}.pdf`
 
   let chartBuffer: Buffer | null = null
   let chartFilename = ''
   if (chartRes && chartRes.ok) {
     chartBuffer = Buffer.from(await chartRes.arrayBuffer())
-    chartFilename = `grafica-${ev.proveedor.replace(/[^\w\-]+/g, '_')}.png`
+    chartFilename = `grafica-${safeName}.png`
   }
 
+  // 4) Build the .eml.
   const eml = buildEml({
     to,
     subject,
     body,
-    fromEmail,
     pdfBuffer,
     pdfFilename,
     chartBuffer,
     chartFilename,
   })
 
-  // Mark the evaluation as "enviado" via EML. Idempotent.
+  // 5) Mark the evaluation as enviado (EML). Idempotent.
   try {
     const now = Date.now()
     await db.execute({
@@ -302,13 +304,11 @@ export async function GET(
     console.warn('mark-sent after EML generation failed (non-fatal):', e)
   }
 
-  const emlFilename = `evaluacion-${ev.proveedor.replace(/[^\w\-]+/g, '_')}.eml`
-
   return new NextResponse(eml, {
     status: 200,
     headers: {
       'Content-Type': 'message/rfc822; charset=UTF-8',
-      'Content-Disposition': `attachment; filename="${emlFilename}"`,
+      'Content-Disposition': `attachment; filename="evaluacion-${safeName}.eml"`,
       'Cache-Control': 'no-store, max-age=0',
     },
   })

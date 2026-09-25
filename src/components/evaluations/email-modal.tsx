@@ -86,13 +86,10 @@ export function EmailModal({ ev, open, onOpenChange, evaluador, cargo, onSent }:
     setError(null)
     setDownloaded(false)
     try {
-      const params = new URLSearchParams({
-        to,
-        subject,
-        body,
-        fromName: evaluador,
-        fromEmail: 'evaluacion@semain.com.mx',
-      })
+      // Only send what the backend needs: to, subject, body. The From
+      // address is hardcoded server-side (compras@semain.com.mx) so the
+      // frontend can't accidentally override it back to the wrong one.
+      const params = new URLSearchParams({ to, subject, body })
       const url = `/api/evaluations/${ev.id}/eml?${params.toString()}`
       // Use fetch to get the blob so we can trigger a download with the right filename
       const res = await fetch(url, { cache: 'no-store' })
