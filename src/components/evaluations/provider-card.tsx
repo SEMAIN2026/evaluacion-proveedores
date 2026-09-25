@@ -14,7 +14,7 @@ import {
   Minus,
   Calendar,
   Phone,
-  CheckCircle2,
+  MailCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -26,21 +26,6 @@ interface Props {
   onEdit: (ev: Evaluation) => void
   onDelete: (ev: Evaluation) => void
   onSendEmail: (ev: Evaluation) => void
-}
-
-/** Formats an ms-since-epoch as "hace 2h" / "ayer 14:30" / "25 sep 14:30". */
-function timeAgo(ms: number): string {
-  const now = Date.now()
-  const diff = Math.max(0, now - ms)
-  const min = Math.floor(diff / 60_000)
-  if (min < 1) return 'hace un momento'
-  if (min < 60) return `hace ${min} min`
-  const h = Math.floor(min / 60)
-  if (h < 24) return `hace ${h}h`
-  const d = Math.floor(h / 24)
-  if (d === 1) return 'ayer'
-  if (d < 7) return `hace ${d} días`
-  return new Date(ms).toLocaleDateString('es-MX', { day: '2-digit', month: 'short' })
 }
 
 export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEmail }: Props) {
@@ -76,16 +61,14 @@ export function ProviderCard({ ev, rank, total, avg, onEdit, onDelete, onSendEma
                 </h3>
                 {isSent && (
                   <span
-                    className="inline-flex items-center gap-1 shrink-0 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-300 text-xs font-semibold"
+                    className="shrink-0 inline-flex items-center justify-center w-7 h-7 rounded-full bg-emerald-100 border border-emerald-500 text-emerald-600"
                     title={
                       ev.enviado_fecha
-                        ? `Enviado por ${ev.enviado_tipo} · ${timeAgo(ev.enviado_fecha)}`
-                        : `Enviado por ${ev.enviado_tipo}`
+                        ? `Enviado por ${ev.enviado_tipo === 'WHATSAPP' ? 'WhatsApp' : ev.enviado_tipo} · ${new Date(ev.enviado_fecha).toLocaleString('es-MX')}`
+                        : `Enviado por ${ev.enviado_tipo === 'WHATSAPP' ? 'WhatsApp' : ev.enviado_tipo}`
                     }
                   >
-                    <CheckCircle2 className="w-3 h-3" />
-                    Enviado{ev.enviado_tipo ? ` · ${ev.enviado_tipo === 'WHATSAPP' ? 'WhatsApp' : ev.enviado_tipo}` : ''}
-                    {ev.enviado_fecha ? ` · ${timeAgo(ev.enviado_fecha)}` : ''}
+                    <MailCheck className="w-4 h-4" />
                   </span>
                 )}
               </div>

@@ -18,8 +18,6 @@ interface EmlOptions {
   cc?: string
   subject: string
   body: string
-  fromName: string
-  fromEmail: string
   pdfBuffer: Buffer
   pdfFilename: string
   chartBuffer: Buffer | null
@@ -108,7 +106,12 @@ function quotedPrintable(text: string): string {
 function buildEml(opts: EmlOptions): string {
   const boundary = genBoundary()
   const headers: string[] = []
-  headers.push(`From: ${encodeHeader(opts.fromName)} <${opts.fromEmail}>`)
+  // No From header — Outlook / Apple Mail / Thunderbird will use the
+  // currently-logged-in account as the sender when the user hits "Send".
+  // Setting an explicit From: would force a specific account and break
+  // if the user is logged in with a different mailbox (the user
+  // specifically asked for Outlook to use the account that's already
+  // open, not a hardcoded one).
   headers.push(`To: ${opts.to}`)
   if (opts.cc) headers.push(`Cc: ${opts.cc}`)
   headers.push(`Subject: ${encodeHeader(opts.subject)}`)
@@ -236,11 +239,8 @@ export async function GET(
   const subject = url.searchParams.get('subject') ||
     `Evaluación de Proveedor - ${ev.proveedor} | Calificación: ${ev.calificacion.toFixed(1)} (${ev.clasificacion})`
   const body = url.searchParams.get('body') || buildDefaultBody(ev, ev.evaluador, ev.cargo)
-  // From address = the user's Outlook mailbox. They download the .eml,
-  // double-click it, Outlook opens with this account as the sender, and
-  // they hit Send. No sevaulting of SMTP creds needed.
-  const fromName = url.searchParams.get('fromName') || ev.evaluador || 'SEMAIN Compras'
-  const fromEmail = url.searchParams.get('fromEmail') || 'compras@semain.com.mx'
+  // No fromName / fromEmail — Outlook will use the currently-logged-in
+  // account when the user opens the .eml. See comment in buildEml().
 
   // Fetch the PDF and chart PNG via internal HTTP (same-origin)
   const baseUrl = `${url.protocol}//${url.host}`
@@ -270,8 +270,6 @@ export async function GET(
     to,
     subject,
     body,
-    fromName,
-    fromEmail,
     pdfBuffer,
     pdfFilename,
     chartBuffer,
